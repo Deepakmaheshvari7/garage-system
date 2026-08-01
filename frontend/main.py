@@ -185,6 +185,22 @@ st.markdown("""
             border-radius: 10px;
             border: 1px solid #eceef1;
         }
+
+        /* ── Hide Streamlit Cloud "Manage app" button ──────────────────── */
+        [data-testid="stAppDeployButton"],
+        .stAppDeployButton,
+        [class*="deployButton"],
+        [class*="DeployButton"] {
+            display: none !important;
+        }
+
+        /* ── Force readable text regardless of viewer's system theme ───── */
+        .stMarkdown, .stMarkdown p, .stMarkdown span,
+        [data-testid="stMarkdownContainer"],
+        [data-testid="stText"], label, .stSelectbox label,
+        .stTextInput label, .stNumberInput label {
+            color: #1f2933 !important;
+        }
     </style>
 """, unsafe_allow_html=True)
 

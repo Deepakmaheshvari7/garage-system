@@ -7,14 +7,14 @@ from auth_guard import require_login, render_sidebar_account_info
 require_login()
 render_sidebar_account_info()
 
-st.title("📦 Inventory")
+st.title("Inventory")
 
 role = st.session_state["role"]
 is_admin = role == "Admin"
 
 # --- Bulk import (Admin & Desk) ---
 if role in ("Admin", "Desk"):
-    with st.expander("⬆️ Bulk import from supplier catalog (.xlsx / .csv)"):
+    with st.expander("Bulk import from supplier catalog (.xlsx / .csv)"):
         st.caption("Expected columns: Name, Category, Stock, Price. 'Cost' is optional and Admin-only.")
         uploaded = st.file_uploader("Choose a file", type=["xlsx", "xls", "csv"])
         if uploaded is not None and st.button("Import"):
@@ -28,18 +28,13 @@ if role in ("Admin", "Desk"):
                         st.text(err)
                 st.rerun()
 
-st.divider()
-
 # --- Add a single new part (Admin only) ---
 CATEGORIES = ["Engine", "Body", "Electrical", "Consumable", "Transmission", "Accessories"]
 BRANDS = ["Bajaj", "TVS", "Hero", "Honda", "Royal Enfield", "Suzuki", "Yamaha", "Universal"]
 
 if is_admin:
-    with st.expander("➕ Add a new part"):
+    with st.expander("Add a new part"):
         with st.form("add_part_form", clear_on_submit=True):
-
-            # ── Section 1: Basic Details ──────────────────────────────────
-            st.markdown("#### 1️⃣ Basic Details")
             c1, c2 = st.columns(2)
             part_number = c1.text_input("Part Number", placeholder="e.g. BJ-ENG-0042")
             name = c2.text_input("Part Name *", placeholder="e.g. Clutch Plate Set")
@@ -48,25 +43,17 @@ if is_admin:
             min_threshold = c4.number_input("Min Stock Alert", min_value=0, value=5, step=1,
                                             help="You'll be alerted when stock falls to or below this number")
 
-            st.divider()
-
-            # ── Section 2: Fits Which Bikes ───────────────────────────────
-            st.markdown("#### 2️⃣ Fits Which Bikes")
             c5, c6 = st.columns(2)
             brand = c5.selectbox("Brand", ["— Select —"] + BRANDS)
             bike_model = c6.text_input("Model Name", placeholder="e.g. Splendor, Pulsar 150")
 
-            st.divider()
-
-            # ── Section 3: Price & Quantity ───────────────────────────────
-            st.markdown("#### 3️⃣ Price & Quantity")
             c7, c8, c9 = st.columns(3)
             cost_price = c7.number_input("Cost Price (₹)", min_value=0.0, value=0.0, step=1.0,
                                          help="What you paid the supplier — only visible to Admin")
             selling_price = c8.number_input("Selling Price (₹) *", min_value=0.0, value=0.0, step=1.0)
             stock_quantity = c9.number_input("Current Quantity", min_value=0, value=0, step=1)
 
-            submitted = st.form_submit_button("✅ Add Part", use_container_width=True, type="primary")
+            submitted = st.form_submit_button("Add Part", use_container_width=True, type="primary")
 
         if submitted:
             errors = []
@@ -90,7 +77,7 @@ if is_admin:
                     "stock_quantity": int(stock_quantity),
                 }
                 if api.post("/api/inventory", json=payload):
-                    st.success(f"✅ '{name}' added to inventory.")
+                    st.success(f"'{name}' added to inventory.")
                     st.rerun()
 
 st.divider()
@@ -103,8 +90,10 @@ st.subheader("Current Inventory")
 # and can also be toggled manually here.
 default_low = st.session_state.pop("show_low_stock", False)
 fcol1, fcol2 = st.columns([3, 1])
-search = fcol1.text_input("🔍 Search by name or category", "")
-low_only = fcol2.checkbox("⚠️ Low stock only", value=default_low)
+search = fcol1.text_input("Search by name or category", "",
+                          label_visibility="collapsed",
+                          placeholder="🔍 Search by name, category, brand...")
+low_only = fcol2.checkbox("Low stock only", value=default_low)
 
 # Cached — inventory list is expensive on large catalogs and doesn't change
 # every second. Cache is auto-invalidated after any add/edit/import.

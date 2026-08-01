@@ -5,7 +5,7 @@ from auth_guard import require_role
 
 require_role("Admin", "Desk")
 
-st.title("🧾 Billing")
+st.title("Billing")
 
 jobs = api.get_fast("/api/jobcards") or []
 billable = [j for j in jobs if j["status"] in ("Ready_For_Billing", "Completed")]
@@ -33,13 +33,13 @@ if not preview:
 # Customer & Vehicle
 c1, c2 = st.columns(2)
 with c1:
-    st.markdown("**👤 Customer**")
-    st.markdown(f"**{preview['customer_name']}**")
-    st.markdown(f"📞 {preview['customer_phone']}")
+    st.markdown("**Customer**")
+    st.write(preview['customer_name'])
+    st.caption(f"📞 {preview['customer_phone']}")
 with c2:
-    st.markdown("**🏍️ Vehicle**")
-    st.markdown(f"**Reg:** {preview['vehicle_reg']}")
-    st.markdown(f"**Mechanic:** {preview['mechanic_name']}")
+    st.markdown("**Vehicle**")
+    st.write(preview['vehicle_reg'])
+    st.caption(f"Mechanic: {preview['mechanic_name']}")
 
 st.divider()
 
@@ -70,16 +70,16 @@ else:
 
 st.divider()
 
-# Totals — simple, no separate boxes
+# Totals
 t1, t2 = st.columns(2)
 t1.metric("Parts Total",   f"₹{preview['parts_subtotal']}")
-t2.metric("💰 Grand Total", f"₹{preview['grand_total']}")
+t2.metric("Grand Total",   f"₹{preview['grand_total']}")
 if labor > 0:
     st.caption(f"Labour charge: ₹{labor:.2f}")
 
 st.divider()
 
-if st.button("📄 Generate PDF Invoice", type="primary", use_container_width=True):
+if st.button("Generate PDF Invoice", type="primary", use_container_width=True):
     with st.spinner("Generating invoice..."):
         resp = api.get_raw(f"/api/billing/jobcards/{job['job_id']}/invoice")
     if resp.status_code == 200:
@@ -91,7 +91,7 @@ if st.button("📄 Generate PDF Invoice", type="primary", use_container_width=Tr
             mime="application/pdf",
             use_container_width=True,
         )
-        st.success("✅ Invoice generated. Job marked Completed.")
+        st.success("Invoice generated. Job marked Completed.")
     else:
         try:
             detail = resp.json().get("detail", resp.text)

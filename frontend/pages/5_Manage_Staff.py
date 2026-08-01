@@ -5,10 +5,10 @@ from auth_guard import require_role
 
 require_role("Admin")
 
-st.title("👥 Manage Staff")
+st.title("Manage Staff")
 
 # ── Add new staff member ───────────────────────────────────────────────────────
-with st.expander("➕ Add New Staff Member", expanded=False):
+with st.expander("Add New Staff Member"):
     with st.form("add_staff_form", clear_on_submit=True):
         s1, s2 = st.columns(2)
         new_username = s1.text_input("Username", placeholder="e.g. rajesh_desk")
@@ -16,7 +16,8 @@ with st.expander("➕ Add New Staff Member", expanded=False):
         s3, s4 = st.columns(2)
         new_password = s3.text_input("Password", type="password")
         confirm_password = s4.text_input("Confirm Password", type="password")
-        submitted = st.form_submit_button("Create Account", type="primary", use_container_width=True)
+        submitted = st.form_submit_button("Create Account", type="primary",
+                                          use_container_width=True)
 
     if submitted:
         errors = []
@@ -36,14 +37,13 @@ with st.expander("➕ Add New Staff Member", expanded=False):
                 "role": new_role,
             })
             if result:
-                st.success(f"✅ Account created for **{new_username}** ({new_role}).")
+                st.success(f"Account created for **{new_username}** ({new_role}).")
                 api.invalidate_cache()
                 st.rerun()
 
 st.divider()
 
 # ── Staff list ─────────────────────────────────────────────────────────────────
-st.subheader("All Staff")
 staff = api.get("/api/users") or []
 
 if not staff:
@@ -59,46 +59,47 @@ for member in staff:
     icon = ROLE_ICON.get(member["role"], "👤")
     is_self = uid == current_user_id
 
-    with st.container(border=True):
-        col1, col2, col3 = st.columns([3, 1, 2])
+    col1, col2, col3 = st.columns([3, 1, 2])
 
-        with col1:
-            st.markdown(f"**{icon} {member['username']}**")
-            st.caption(f"Role: {member['role']}  |  ID: #{uid}"
-                       + ("  ← (you)" if is_self else ""))
+    with col1:
+        st.markdown(f"**{icon} {member['username']}**")
+        st.caption(f"{member['role']}  ·  ID #{uid}"
+                   + ("  (you)" if is_self else ""))
 
-        with col2:
-            if not is_self:
-                if st.button("🗑️ Remove", key=f"del_{uid}",
-                             help="Delete this staff account"):
-                    st.session_state[f"confirm_delete_{uid}"] = True
+    with col2:
+        if not is_self:
+            if st.button("Remove", key=f"del_{uid}",
+                         help="Delete this staff account"):
+                st.session_state[f"confirm_delete_{uid}"] = True
 
-            if st.session_state.get(f"confirm_delete_{uid}"):
-                st.warning(f"Delete **{member['username']}**?")
-                d1, d2 = st.columns(2)
-                if d1.button("Yes, delete", key=f"yes_del_{uid}", type="primary"):
-                    if api.delete(f"/api/users/{uid}"):
-                        st.success(f"Deleted {member['username']}.")
-                        st.session_state.pop(f"confirm_delete_{uid}", None)
-                        api.invalidate_cache()
-                        st.rerun()
-                if d2.button("Cancel", key=f"no_del_{uid}"):
+        if st.session_state.get(f"confirm_delete_{uid}"):
+            st.warning(f"Delete **{member['username']}**?")
+            d1, d2 = st.columns(2)
+            if d1.button("Yes, delete", key=f"yes_del_{uid}", type="primary"):
+                if api.delete(f"/api/users/{uid}"):
+                    st.success(f"Deleted {member['username']}.")
                     st.session_state.pop(f"confirm_delete_{uid}", None)
+                    api.invalidate_cache()
                     st.rerun()
+            if d2.button("Cancel", key=f"no_del_{uid}"):
+                st.session_state.pop(f"confirm_delete_{uid}", None)
+                st.rerun()
 
-        with col3:
-            with st.popover(f"🔑 Reset Password", use_container_width=True):
-                with st.form(f"reset_pw_{uid}"):
-                    new_pw = st.text_input("New Password", type="password",
-                                           key=f"npw_{uid}")
-                    if st.form_submit_button("Reset", type="primary",
-                                             use_container_width=True):
-                        if len(new_pw) < 6:
-                            st.error("Min 6 characters.")
-                        else:
-                            result = api.patch(
-                                f"/api/users/{uid}/password",
-                                json={"new_password": new_pw}
-                            )
-                            if result:
-                                st.success("Password updated!")
+    with col3:
+        with st.popover("Reset Password", use_container_width=True):
+            with st.form(f"reset_pw_{uid}"):
+                new_pw = st.text_input("New Password", type="password",
+                                       key=f"npw_{uid}")
+                if st.form_submit_button("Reset", type="primary",
+                                         use_container_width=True):
+                    if len(new_pw) < 6:
+                        st.error("Min 6 characters.")
+                    else:
+                        result = api.patch(
+                            f"/api/users/{uid}/password",
+                            json={"new_password": new_pw}
+                        )
+                        if result:
+                            st.success("Password updated!")
+
+    st.divider()

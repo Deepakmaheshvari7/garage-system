@@ -4,13 +4,12 @@ from auth_guard import require_role
 
 require_role("Admin", "Desk")
 
-st.title("🛠️ Job Cards")
+st.title("Job Cards")
 
 left, right = st.columns([1, 2], gap="large")
 
 # ── LEFT: Job list ─────────────────────────────────────────────────────────────
 with left:
-    st.subheader("All Jobs")
     status_filter = st.selectbox(
         "Filter", ["All", "Open", "In-Progress", "Ready_For_Billing", "Completed"],
         label_visibility="collapsed"
@@ -29,24 +28,18 @@ with left:
             st.session_state["selected_job_id"] = j["job_id"]
             st.rerun()
 
-    st.divider()
-
-    with st.expander("➕ New Job Card"):
+    with st.expander("New Job Card"):
         mechanics = api.get("/api/users", params={"role": "Mechanic"}) or []
         mech_opts = {"— Unassigned —": None}
         mech_opts.update({m["username"]: m["user_id"] for m in mechanics})
 
         with st.form("create_job_form", clear_on_submit=True):
-            st.markdown("**Customer**")
             cust_name  = st.text_input("Customer Name")
             cust_phone = st.text_input("Phone Number")
-            st.markdown("**Vehicle**")
             vehicle_reg = st.text_input("Vehicle Reg. No. *", placeholder="MP09AB1234")
             mech_label  = st.selectbox("Assign Mechanic", list(mech_opts.keys()))
-            st.markdown("**Labour Charge (₹)**")
-            labor_charge = st.number_input("Labour Charge", min_value=0.0,
-                                           value=0.0, step=50.0,
-                                           label_visibility="collapsed")
+            labor_charge = st.number_input("Labour Charge (₹)", min_value=0.0,
+                                           value=0.0, step=50.0)
             create_btn = st.form_submit_button("Create Job", type="primary",
                                                use_container_width=True)
 
@@ -70,14 +63,7 @@ with left:
 with right:
     selected_id = st.session_state.get("selected_job_id")
     if not selected_id:
-        st.markdown("""
-            <div style='text-align:center;padding:80px 0;color:#64748B;'>
-                <div style='font-size:48px;'>🛠️</div>
-                <div style='font-size:15px;margin-top:12px;'>
-                    Select a job or create a new one.
-                </div>
-            </div>
-        """, unsafe_allow_html=True)
+        st.info("Select a job from the list, or create a new one.")
         st.stop()
 
     job = api.get(f"/api/jobcards/{selected_id}")
@@ -92,19 +78,18 @@ with right:
 
     h1, h2 = st.columns([2, 1])
     with h1:
-        st.markdown(f"### Job #{job['job_id']} — {job['vehicle_reg']}")
-        st.markdown(f"**Customer:** {job.get('customer_name') or '—'} "
-                    f"&nbsp; 📞 {job.get('customer_phone') or '—'}")
-        st.markdown(f"**Mechanic:** {job.get('mechanic_name') or 'Unassigned'}")
+        st.subheader(f"Job #{job['job_id']} — {job['vehicle_reg']}")
+        st.caption(f"Customer: {job.get('customer_name') or '—'}  ·  "
+                   f"📞 {job.get('customer_phone') or '—'}  ·  "
+                   f"Mechanic: {job.get('mechanic_name') or 'Unassigned'}")
     with h2:
-        st.markdown("**Status**")
-        st.markdown(f"### {STATUS_BADGE.get(job['status'], job['status'])}")
+        st.markdown(f"#### {STATUS_BADGE.get(job['status'], job['status'])}")
 
     st.divider()
 
     if not is_done:
         # Add part
-        st.subheader("➕ Add Part")
+        st.markdown("**Add Part**")
         inventory = api.get_fast("/api/inventory") or []
         search = st.text_input("Search by name or part number", key="part_search",
                                label_visibility="collapsed",
@@ -131,10 +116,10 @@ with right:
             sel_part = part_opts[sel_lbl]
             qty      = p2.number_input("Qty", min_value=1, value=1, step=1,
                                        label_visibility="collapsed")
-            add_ok   = p3.button("Add ➕", use_container_width=True,
+            add_ok   = p3.button("Add", use_container_width=True,
                                  disabled=(sel_part["stock_quantity"] == 0))
             if sel_part["stock_quantity"] == 0:
-                st.warning(f"⚠️ '{sel_part['name']}' is out of stock.")
+                st.warning(f"'{sel_part['name']}' is out of stock.")
             if add_ok:
                 res = api.post(f"/api/jobcards/{job['job_id']}/parts",
                                json={"part_id": sel_part["part_id"],
@@ -143,10 +128,8 @@ with right:
                     st.success(f"Added {qty} × {sel_part['name']}")
                     st.rerun()
 
-        st.divider()
-
         # Labour charge
-        st.subheader("💰 Labour Charge")
+        st.markdown("**Labour Charge**")
         l1, l2 = st.columns([2, 1])
         new_charge = l1.number_input(
             "Labour (₹)", min_value=0.0,
@@ -155,7 +138,7 @@ with right:
             label_visibility="collapsed",
             help="Enter the total labour charge for this job"
         )
-        if l2.button("Update ✔️", use_container_width=True):
+        if l2.button("Update", use_container_width=True):
             if api.patch(f"/api/jobcards/{job['job_id']}/labor",
                          json={"labor_charge": new_charge}):
                 st.success("Labour charge updated.")
@@ -164,7 +147,7 @@ with right:
         st.divider()
 
     # Parts used
-    st.subheader("📋 Parts Used")
+    st.markdown("**Parts Used**")
     if job["parts_used"]:
         for p in job["parts_used"]:
             c1, c2, c3, c4, c5 = st.columns([3, 1, 1, 1, 1])
@@ -185,20 +168,20 @@ with right:
     t1, t2, t3 = st.columns(3)
     t1.metric("Parts Total",    f"₹{job['parts_total']:,.0f}")
     t2.metric("Labour Charge",  f"₹{job['labor_charge']:,.0f}")
-    t3.metric("💰 Grand Total", f"₹{job['grand_total']:,.0f}")
+    t3.metric("Grand Total",    f"₹{job['grand_total']:,.0f}")
 
     st.divider()
 
     if not is_done:
-        st.subheader("📌 Update Status")
+        st.markdown("**Update Status**")
         opts = ["Open", "In-Progress", "Ready_For_Billing", "Completed"]
         s1, s2 = st.columns([2, 1])
         new_status = s1.selectbox("Status", opts, index=opts.index(job["status"]),
                                   label_visibility="collapsed")
-        if s2.button("Update ✅", use_container_width=True, type="primary"):
+        if s2.button("Update Status", use_container_width=True, type="primary"):
             if api.patch(f"/api/jobcards/{job['job_id']}/status",
                          json={"status": new_status}):
                 st.success(f"Status → {new_status}")
                 st.rerun()
     else:
-        st.success("✅ Job completed. Go to **Billing** to generate the invoice.")
+        st.success("Job completed. Go to **Billing** to generate the invoice.")

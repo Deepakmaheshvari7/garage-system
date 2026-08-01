@@ -322,6 +322,121 @@ st.markdown("""
             background: var(--surface) !important;
             color: var(--text-primary) !important;
         }
+
+        /* ══════════════════════════════════════════════════════════════════
+           SPACING SYSTEM — 8px grid, consistent padding everywhere
+           ══════════════════════════════════════════════════════════════════ */
+
+        /* ── Headings: space below so content doesn't touch ────────────── */
+        h1 { margin-bottom: 1rem !important; }
+        h2, h3 { margin-bottom: 0.75rem !important; }
+        h4, h5, h6 { margin-bottom: 0.5rem !important; }
+
+        /* ── Subheader spacing ─────────────────────────────────────────── */
+        [data-testid="stSubheader"], .stSubheader {
+            margin-top: 1.5rem !important;
+            margin-bottom: 0.75rem !important;
+        }
+
+        /* ── Expanders: proper internal padding ────────────────────────── */
+        [data-testid="stExpander"] {
+            padding: 0 !important;
+            overflow: hidden;
+        }
+        [data-testid="stExpander"] summary {
+            padding: 1rem 1.25rem !important;
+        }
+        [data-testid="stExpander"] [data-testid="stExpanderDetails"],
+        [data-testid="stExpander"] > div > div:last-child {
+            padding: 0 1.25rem 1.25rem 1.25rem !important;
+        }
+
+        /* ── Forms: internal spacing ───────────────────────────────────── */
+        [data-testid="stForm"] {
+            padding: 1.25rem !important;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+        }
+        [data-testid="stForm"] > div {
+            gap: 0.75rem;
+        }
+
+        /* ── Alerts: comfortable padding ───────────────────────────────── */
+        [data-testid="stAlert"] {
+            padding: 1rem 1.25rem !important;
+        }
+
+        /* ── Popover content padding ───────────────────────────────────── */
+        [data-testid="stPopover"] > div {
+            padding: 1rem 1.25rem !important;
+        }
+
+        /* ── File uploader: internal padding ───────────────────────────── */
+        [data-testid="stFileUploader"] {
+            padding: 1.25rem !important;
+        }
+        [data-testid="stFileUploader"] section {
+            padding: 1rem !important;
+        }
+
+        /* ── Data editor / dataframe cell padding ──────────────────────── */
+        [data-testid="stDataFrame"] > div,
+        [data-testid="stTable"] > div {
+            padding: 0.5rem !important;
+        }
+
+        /* ── Bordered containers (st.container(border=True)) ───────────── */
+        [data-testid="stVerticalBlockBorderWrapper"] {
+            padding: 1.25rem !important;
+        }
+
+        /* ── Metric cards: already padded, ensure consistency ──────────── */
+        [data-testid="stMetric"] {
+            padding: 1.25rem 1.5rem !important;
+        }
+
+        /* ── Widget spacing: gap between stacked widgets ───────────────── */
+        .stTextInput, .stNumberInput, .stSelectbox, .stTextArea,
+        .stCheckbox, .stRadio, .stSlider, .stDateInput, .stTimeInput,
+        .stFileUploader, .stMultiSelect {
+            margin-bottom: 0.5rem;
+        }
+
+        /* ── Button spacing ────────────────────────────────────────────── */
+        .stButton { margin-bottom: 0.25rem; }
+
+        /* ── Column gaps ───────────────────────────────────────────────── */
+        [data-testid="stHorizontalBlock"] {
+            gap: 1rem !important;
+        }
+
+        /* ── Divider: consistent vertical rhythm ───────────────────────── */
+        hr { margin: 2rem 0 !important; }
+
+        /* ── Caption: slight top margin ────────────────────────────────── */
+        .stCaption { margin-top: 0.25rem !important; }
+
+        /* ── Toast notifications ───────────────────────────────────────── */
+        [data-testid="stToast"] {
+            padding: 0.75rem 1.25rem !important;
+            border-radius: var(--radius-sm) !important;
+        }
+
+        /* ── Tab content padding ───────────────────────────────────────── */
+        .stTabs [data-baseweb="tab-panel"] {
+            padding-top: 1rem !important;
+        }
+
+        /* ── Sidebar internal padding ──────────────────────────────────── */
+        [data-testid="stSidebar"] [data-testid="stVerticalBlock"] {
+            padding: 0 0.75rem;
+        }
+
+        /* ── Login form card ───────────────────────────────────────────── */
+        .stForm [data-testid="stFormSubmitButton"] {
+            margin-top: 0.5rem;
+        }
     </style>
 """, unsafe_allow_html=True)
 

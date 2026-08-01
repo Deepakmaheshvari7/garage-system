@@ -16,6 +16,9 @@ __pycache__/
 Thumbs.db
 .DS_Store
 
+# Test artifacts
+backend/_test_*
+
 # IDE — keep shared settings, ignore personal ones
 .vscode/*
 !.vscode/settings.json

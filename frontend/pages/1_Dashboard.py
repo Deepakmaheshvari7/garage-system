@@ -1,5 +1,6 @@
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 import streamlit as st
 
 import api_client as api
@@ -8,6 +9,18 @@ from auth_guard import require_role
 require_role("Admin")
 
 st.title("📊 Dashboard")
+
+# ── Shared dark chart layout ──────────────────────────────────────────────────
+CHART_COLORS = ["#3B82F6", "#06B6D4", "#10B981", "#F59E0B", "#EF4444",
+                "#8B5CF6", "#EC4899", "#14B8A6"]
+
+DARK_LAYOUT = dict(
+    paper_bgcolor="rgba(0,0,0,0)",
+    plot_bgcolor="rgba(0,0,0,0)",
+    font=dict(color="#94A3B8", family="Inter"),
+    margin=dict(l=10, r=10, t=10, b=10),
+    colorway=CHART_COLORS,
+)
 
 with st.spinner("Loading..."):
     metrics  = api.get_fast("/api/dashboard/metrics")
@@ -54,10 +67,12 @@ with ch1:
     st.subheader("📊 Inventory by Category")
     if inv_cats:
         df_cat = pd.DataFrame(inv_cats)
-        fig = px.pie(df_cat, names="category", values="count", hole=0.4,
-                     color_discrete_sequence=px.colors.qualitative.Set2)
-        fig.update_traces(textposition="inside", textinfo="percent+label")
-        fig.update_layout(margin=dict(l=10, r=10, t=10, b=10), showlegend=True)
+        fig = px.pie(df_cat, names="category", values="count", hole=0.45,
+                     color_discrete_sequence=CHART_COLORS)
+        fig.update_traces(textposition="inside", textinfo="percent+label",
+                          textfont=dict(color="#F8FAFC", size=11))
+        fig.update_layout(**DARK_LAYOUT, showlegend=True,
+                          legend=dict(font=dict(color="#94A3B8")))
         st.plotly_chart(fig, use_container_width=True)
     else:
         st.caption("No inventory data yet.")
@@ -68,11 +83,13 @@ with ch2:
         df_top = pd.DataFrame(top_sell)
         fig2 = px.bar(df_top, x="quantity_sold", y="name", orientation="h",
                       color="quantity_sold",
-                      color_continuous_scale=["#dce3ea", "#1a3c6e"],
+                      color_continuous_scale=["#1A2332", "#3B82F6"],
                       labels={"quantity_sold": "Qty Sold", "name": ""})
-        fig2.update_layout(margin=dict(l=10, r=10, t=10, b=10),
+        fig2.update_layout(**DARK_LAYOUT,
                            coloraxis_showscale=False,
-                           yaxis=dict(autorange="reversed"))
+                           yaxis=dict(autorange="reversed",
+                                      gridcolor="#2D3748"),
+                           xaxis=dict(gridcolor="#2D3748"))
         st.plotly_chart(fig2, use_container_width=True)
     else:
         st.caption("No sales data in the last 30 days yet.")
@@ -85,8 +102,11 @@ trend = api.get_fast("/api/dashboard/revenue-trend")
 if trend:
     df_trend = pd.DataFrame(trend)
     fig3 = px.line(df_trend, x="date", y="revenue", markers=True,
-                   color_discrete_sequence=["#1a3c6e"])
-    fig3.update_layout(margin=dict(l=10, r=10, t=10, b=10))
+                   color_discrete_sequence=["#3B82F6"])
+    fig3.update_traces(line=dict(width=2.5), marker=dict(size=5))
+    fig3.update_layout(**DARK_LAYOUT,
+                       xaxis=dict(gridcolor="#2D3748"),
+                       yaxis=dict(gridcolor="#2D3748"))
     st.plotly_chart(fig3, use_container_width=True)
 else:
     st.caption("No completed jobs in the last 30 days yet.")

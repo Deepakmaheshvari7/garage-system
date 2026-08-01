@@ -71,7 +71,7 @@ with right:
     selected_id = st.session_state.get("selected_job_id")
     if not selected_id:
         st.markdown("""
-            <div style='text-align:center;padding:80px 0;color:#aaa;'>
+            <div style='text-align:center;padding:80px 0;color:#64748B;'>
                 <div style='font-size:48px;'>🛠️</div>
                 <div style='font-size:15px;margin-top:12px;'>
                     Select a job or create a new one.

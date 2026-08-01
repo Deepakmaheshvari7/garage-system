@@ -11,30 +11,55 @@ st.set_page_config(
     layout="wide",
 )
 
-# ── Global minimalist theme ──────────────────────────────────────────────────
+# ── Global design system — premium dark SaaS theme ───────────────────────────
 st.markdown("""
     <style>
+        /* ══════════════════════════════════════════════════════════════════
+           DESIGN TOKENS
+           ══════════════════════════════════════════════════════════════════ */
+        :root {
+            --bg-primary:    #0B1220;
+            --bg-secondary:  #111827;
+            --surface:       #1A2332;
+            --surface-elev:  #243042;
+            --border:        #2D3748;
+            --text-primary:  #F8FAFC;
+            --text-secondary:#CBD5E1;
+            --text-muted:    #94A3B8;
+            --accent:        #3B82F6;
+            --cyan:          #06B6D4;
+            --success:       #10B981;
+            --warning:       #F59E0B;
+            --danger:        #EF4444;
+            --radius:        12px;
+            --radius-sm:     8px;
+            --transition:    200ms ease;
+        }
+
         /* ── Typography & base ─────────────────────────────────────────── */
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
         html, body, [class*="css"], .stApp {
             font-family: 'Inter', -apple-system, BlinkMacSystemFont,
                          'Segoe UI', sans-serif !important;
-            color: #1f2933;
+            color: var(--text-primary);
         }
 
-        .stApp { background: #fafbfc; }
+        .stApp { background: var(--bg-primary); }
 
         h1, h2, h3 {
-            font-weight: 600 !important;
-            letter-spacing: -0.01em;
-            color: #111827 !important;
+            font-weight: 700 !important;
+            letter-spacing: -0.02em;
+            color: var(--text-primary) !important;
         }
-        h1 { font-size: 1.6rem !important; }
-        h2, h3 { font-size: 1.15rem !important; }
+        h1 { font-size: 1.5rem !important; }
+        h2, h3 { font-size: 1.1rem !important; }
 
-        /* ── Native header: invisible, but keep the sidebar expand ─────
-           control clickable so a collapsed sidebar can be restored ──── */
+        p, span, label, .stMarkdown, [data-testid="stMarkdownContainer"] {
+            color: var(--text-secondary);
+        }
+
+        /* ── Native header: invisible, keep sidebar expand clickable ───── */
         [data-testid="stHeader"] {
             background: transparent !important;
             pointer-events: none !important;
@@ -48,36 +73,39 @@ st.markdown("""
             top: 4.2rem !important;
             left: 0.6rem !important;
             z-index: 10000000 !important;
-            background: #ffffff;
-            border: 1px solid #eceef1;
-            border-radius: 8px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            color: var(--text-secondary);
         }
 
-        /* ── Fixed full-width top brand bar ──────────────────────────── */
+        /* ── Fixed full-width top brand bar ────────────────────────────── */
         .top-brand-bar {
             position: fixed;
             top: 0; left: 0; right: 0;
             z-index: 9999999;
-            background: #ffffff;
+            background: rgba(17, 24, 39, 0.85);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
             display: flex;
             align-items: center;
             justify-content: space-between;
             gap: 12px;
-            padding: 8px 24px;
-            border-bottom: 1px solid #eceef1;
+            padding: 10px 24px;
+            border-bottom: 1px solid var(--border);
         }
 
-        /* ── Main content breathing room ───────────────────────────────── */
+        /* ── Main content ──────────────────────────────────────────────── */
         .block-container {
-            padding-top: 5rem !important;
+            padding-top: 5.5rem !important;
             padding-bottom: 3rem !important;
             max-width: 1200px;
         }
 
         /* ── Sidebar ───────────────────────────────────────────────────── */
         [data-testid="stSidebar"] {
-            background: #ffffff;
-            border-right: 1px solid #eceef1;
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border);
         }
         [data-testid="stSidebar"] > div:first-child {
             height: 100%;
@@ -85,17 +113,13 @@ st.markdown("""
         }
         [data-testid="stSidebar"] [data-testid="stVerticalBlock"] {
             height: 100%;
-            gap: 0.5rem;
+            gap: 0.4rem;
         }
-        /* Nav fills the middle so the logout block sinks to the bottom */
-        [data-testid="stSidebarNav"] {
-            flex: 1 1 auto;
-        }
-        /* Pin the logout block (marked by .logout-anchor) to the bottom */
+        [data-testid="stSidebarNav"] { flex: 1 1 auto; }
         [data-testid="stSidebar"] .stElementContainer:has(.logout-anchor) {
             margin-top: auto;
             padding-top: 0.75rem;
-            border-top: 1px solid #eceef1;
+            border-top: 1px solid var(--border);
         }
         [data-testid="stSidebar"] .stElementContainer:has(.logout-anchor)
         + .stElementContainer {
@@ -104,86 +128,168 @@ st.markdown("""
 
         /* ── Sidebar nav links ─────────────────────────────────────────── */
         [data-testid="stSidebarNav"] a {
-            border-radius: 8px;
-            padding: 0.45rem 0.75rem;
-            margin: 1px 0;
-            color: #4b5563 !important;
+            border-radius: var(--radius-sm);
+            padding: 0.5rem 0.75rem;
+            margin: 2px 0;
+            color: var(--text-muted) !important;
             font-weight: 500;
-            transition: background 0.15s ease;
+            transition: all var(--transition);
         }
         [data-testid="stSidebarNav"] a:hover {
-            background: #f3f4f6;
+            background: var(--surface);
+            color: var(--text-primary) !important;
         }
         [data-testid="stSidebarNav"] a[aria-current="page"] {
-            background: #eef2f7;
-            color: #1a3c6e !important;
+            background: var(--surface-elev);
+            color: var(--accent) !important;
             font-weight: 600;
+            box-shadow: inset 2px 0 0 var(--accent);
         }
         [data-testid="stSidebarNav"] span[data-testid="stSidebarNavSeparator"] {
-            border-color: #eceef1;
+            border-color: var(--border);
         }
 
         /* ── Buttons ───────────────────────────────────────────────────── */
         .stButton > button {
-            border-radius: 8px;
-            border: 1px solid #e5e7eb;
-            background: #ffffff;
-            color: #374151;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border);
+            background: var(--surface);
+            color: var(--text-secondary);
             font-weight: 500;
-            padding: 0.45rem 1rem;
-            transition: all 0.15s ease;
+            padding: 0.5rem 1rem;
+            transition: all var(--transition);
         }
         .stButton > button:hover {
-            border-color: #cbd2d9;
-            background: #f9fafb;
-            color: #111827;
+            border-color: var(--accent);
+            background: var(--surface-elev);
+            color: var(--text-primary);
+            box-shadow: 0 0 12px rgba(59, 130, 246, 0.15);
         }
         .stButton > button[kind="primary"],
         .stFormSubmitButton > button[kind="primary"] {
-            background: #1a3c6e;
-            border-color: #1a3c6e;
+            background: var(--accent);
+            border-color: var(--accent);
             color: #ffffff;
         }
         .stButton > button[kind="primary"]:hover,
         .stFormSubmitButton > button[kind="primary"]:hover {
-            background: #16325c;
-            border-color: #16325c;
+            background: #2563EB;
+            border-color: #2563EB;
+            box-shadow: 0 0 16px rgba(59, 130, 246, 0.3);
         }
 
         /* ── Inputs ────────────────────────────────────────────────────── */
         .stTextInput input, .stNumberInput input,
         .stSelectbox [data-baseweb="select"] > div,
         .stTextArea textarea {
-            border-radius: 8px !important;
-            border-color: #e5e7eb !important;
+            border-radius: var(--radius-sm) !important;
+            border-color: var(--border) !important;
+            background: var(--surface) !important;
+            color: var(--text-primary) !important;
+            transition: border-color var(--transition);
+        }
+        .stTextInput input:focus, .stNumberInput input:focus,
+        .stTextArea textarea:focus {
+            border-color: var(--accent) !important;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15) !important;
         }
 
-        /* ── Metrics ───────────────────────────────────────────────────── */
+        /* ── Metrics — elevated cards ──────────────────────────────────── */
         [data-testid="stMetric"] {
-            background: #ffffff;
-            border: 1px solid #eceef1;
-            border-radius: 12px;
-            padding: 1rem 1.25rem;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 1.25rem 1.5rem;
+            transition: all var(--transition);
         }
-        [data-testid="stMetricLabel"] { color: #6b7280; font-weight: 500; }
-        [data-testid="stMetricValue"] { color: #111827; font-weight: 600; }
+        [data-testid="stMetric"]:hover {
+            border-color: var(--accent);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3),
+                        0 0 12px rgba(59, 130, 246, 0.08);
+        }
+        [data-testid="stMetricLabel"] {
+            color: var(--text-muted) !important;
+            font-weight: 500;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        [data-testid="stMetricValue"] {
+            color: var(--text-primary) !important;
+            font-weight: 700;
+            font-size: 1.5rem;
+        }
 
-        /* ── Dataframes / tables — visually lightweight ────────────────── */
+        /* ── Dataframes / tables ───────────────────────────────────────── */
         [data-testid="stDataFrame"],
         [data-testid="stTable"] {
-            border: 1px solid #eceef1;
-            border-radius: 12px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
             overflow: hidden;
         }
 
-        /* ── Dividers & captions ───────────────────────────────────────── */
-        hr { border-color: #eceef1 !important; margin: 2rem 0 !important; }
-        .stCaption, small { color: #9ca3af !important; }
+        /* ── Expanders ─────────────────────────────────────────────────── */
+        [data-testid="stExpander"] {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+        }
+        [data-testid="stExpander"] summary {
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+        [data-testid="stExpander"] summary:hover {
+            color: var(--text-primary);
+        }
 
-        /* ── Alerts — softer ───────────────────────────────────────────── */
+        /* ── Containers with border ────────────────────────────────────── */
+        [data-testid="stVerticalBlockBorderWrapper"] {
+            background: var(--surface);
+            border: 1px solid var(--border) !important;
+            border-radius: var(--radius) !important;
+        }
+
+        /* ── Dividers & captions ───────────────────────────────────────── */
+        hr { border-color: var(--border) !important; margin: 2rem 0 !important; }
+        .stCaption, small { color: var(--text-muted) !important; }
+
+        /* ── Alerts ────────────────────────────────────────────────────── */
         [data-testid="stAlert"] {
-            border-radius: 10px;
-            border: 1px solid #eceef1;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border);
+            background: var(--surface);
+        }
+
+        /* ── Popover ───────────────────────────────────────────────────── */
+        [data-testid="stPopover"] > div {
+            background: var(--surface-elev);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+        }
+
+        /* ── Tabs ──────────────────────────────────────────────────────── */
+        .stTabs [data-baseweb="tab-list"] {
+            gap: 4px;
+            border-bottom: 1px solid var(--border);
+        }
+        .stTabs [data-baseweb="tab"] {
+            border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+            color: var(--text-muted);
+            font-weight: 500;
+        }
+        .stTabs [data-baseweb="tab"][aria-selected="true"] {
+            color: var(--accent);
+            border-bottom-color: var(--accent);
+        }
+
+        /* ── Checkbox / toggle ─────────────────────────────────────────── */
+        .stCheckbox label { color: var(--text-secondary) !important; }
+
+        /* ── File uploader ─────────────────────────────────────────────── */
+        [data-testid="stFileUploader"] {
+            background: var(--surface);
+            border: 1px dashed var(--border);
+            border-radius: var(--radius);
         }
 
         /* ── Hide Streamlit Cloud "Manage app" button ──────────────────── */
@@ -194,12 +300,27 @@ st.markdown("""
             display: none !important;
         }
 
-        /* ── Force readable text regardless of viewer's system theme ───── */
-        .stMarkdown, .stMarkdown p, .stMarkdown span,
-        [data-testid="stMarkdownContainer"],
-        [data-testid="stText"], label, .stSelectbox label,
-        .stTextInput label, .stNumberInput label {
-            color: #1f2933 !important;
+        /* ── Scrollbar ─────────────────────────────────────────────────── */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: var(--bg-primary); }
+        ::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover { background: var(--surface-elev); }
+
+        /* ── Selectbox dropdown ────────────────────────────────────────── */
+        [data-baseweb="popover"] {
+            background: var(--surface-elev) !important;
+            border: 1px solid var(--border) !important;
+            border-radius: var(--radius-sm) !important;
+        }
+        [data-baseweb="menu"] li {
+            color: var(--text-secondary) !important;
+        }
+        [data-baseweb="menu"] li:hover {
+            background: var(--surface) !important;
+            color: var(--text-primary) !important;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -238,19 +359,19 @@ def render_login():
                 {img_tag}
                 <div>
                     <div style="font-size:32px;font-weight:700;
-                                color:#c0392b;line-height:1.2;">
+                                color:#EF4444;line-height:1.2;">
                         श्री पार्वती मोटर्स
                     </div>
                     <div style="font-size:22px;font-weight:600;
-                                color:#1a3c6e;letter-spacing:1px;">
+                                color:#3B82F6;letter-spacing:1px;">
                         SHRI PARVATI MOTORS
                     </div>
-                    <div style="font-size:10px;color:#888;margin-top:1px;">
+                    <div style="font-size:10px;color:#94A3B8;margin-top:1px;">
                         TVS Authorised Service Center
                     </div>
                 </div>
             </div>
-            <p style="text-align:center;color:#aaa;font-size:12px;margin-bottom:20px;">
+            <p style="text-align:center;color:#64748B;font-size:12px;margin-bottom:20px;">
                 Staff Portal
             </p>
         """, unsafe_allow_html=True)
@@ -304,29 +425,29 @@ def main():
             <div style="display:flex;align-items:center;gap:10px;">
                 {img_tag}
                 <div>
-                    <div style="font-size:16px;font-weight:700;color:#111827;
+                    <div style="font-size:16px;font-weight:700;color:#F8FAFC;
                                 line-height:1.2;letter-spacing:-0.01em;">
                         Shri Parvati Motors
                     </div>
-                    <div style="font-size:10px;color:#9ca3af;margin-top:1px;">
+                    <div style="font-size:10px;color:#94A3B8;margin-top:1px;">
                         TVS Authorised Service Center
                     </div>
                 </div>
             </div>
             <div style="display:flex;align-items:center;gap:9px;
-                        background:#f6f7f9;border:1px solid #eceef1;
+                        background:#1A2332;border:1px solid #2D3748;
                         border-radius:999px;padding:5px 14px 5px 6px;">
                 <div style="width:26px;height:26px;border-radius:50%;
-                            background:#1a3c6e;color:#fff;font-size:11px;
+                            background:#3B82F6;color:#fff;font-size:11px;
                             font-weight:600;display:flex;align-items:center;
                             justify-content:center;flex-shrink:0;">
                     {st.session_state['username'][0].upper()}
                 </div>
                 <div style="line-height:1.2;">
-                    <div style="font-size:13px;font-weight:600;color:#111827;">
+                    <div style="font-size:13px;font-weight:600;color:#F8FAFC;">
                         {st.session_state['username']}
                     </div>
-                    <div style="font-size:10px;color:#9ca3af;">
+                    <div style="font-size:10px;color:#94A3B8;">
                         {st.session_state['role']}
                     </div>
                 </div>

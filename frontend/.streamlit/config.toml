@@ -3,13 +3,11 @@ headless = true
 enableXsrfProtection = false
 
 [browser]
-# Force light theme — our custom CSS is designed for light mode only
-# and dark mode makes white text invisible
 gatherUsageStats = false
 
 [theme]
-base = "light"
-primaryColor = "#1a3c6e"
-backgroundColor = "#ffffff"
-secondaryBackgroundColor = "#f7f9fc"
-textColor = "#222222"
+base = "dark"
+primaryColor = "#3B82F6"
+backgroundColor = "#0B1220"
+secondaryBackgroundColor = "#111827"
+textColor = "#F8FAFC"

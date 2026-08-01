@@ -1,6 +1,6 @@
 [server]
 headless = true
-enableXsrfProtection = true
+enableXsrfProtection = false
 
 [theme]
 primaryColor = "#1a3c6e"

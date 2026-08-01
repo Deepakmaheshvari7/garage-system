@@ -1,0 +1,391 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      @page {
+        size: A4;
+        margin: 1.5cm 2cm;
+      }
+      @font-face {
+        font-family: "Noto Devanagari";
+        src: url("../fonts/NotoSansDevanagari-Bold.ttf") format("truetype");
+        font-weight: bold;
+      }
+      @font-face {
+        font-family: "Noto Devanagari";
+        src: url("../fonts/NotoSansDevanagari-Regular.ttf") format("truetype");
+        font-weight: normal;
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        font-family: Arial, sans-serif;
+        color: #1a1a1a;
+        font-size: 10.5pt;
+      }
+
+      /* ── Header ── */
+      .header {
+        display: flex;
+        align-items: center;
+        border-bottom: 3px solid #c0392b;
+        padding-bottom: 14px;
+        margin-bottom: 14px;
+      }
+      .header-logo {
+        width: 70px;
+        margin-right: 16px;
+        text-align: center;
+      }
+      .header-logo .tvs-badge {
+        background: #1a3c6e;
+        color: white;
+        font-size: 18pt;
+        font-weight: bold;
+        padding: 6px 10px;
+        border-radius: 4px;
+        letter-spacing: 2px;
+        display: inline-block;
+      }
+      .header-main {
+        flex: 1;
+      }
+      .header-main .shop-hindi {
+        font-family: "Noto Devanagari", sans-serif;
+        font-size: 16pt;
+        font-weight: bold;
+        color: #c0392b;
+      }
+      .header-main .shop-english {
+        font-size: 13pt;
+        font-weight: bold;
+        color: #1a3c6e;
+        letter-spacing: 1px;
+      }
+      .header-main .tagline {
+        font-family: "Noto Devanagari", sans-serif;
+        font-size: 8.5pt;
+        color: #555;
+        margin-top: 2px;
+      }
+      .header-right {
+        text-align: right;
+        font-size: 9pt;
+        color: #333;
+        line-height: 1.7;
+        font-family: "Noto Devanagari", Arial, sans-serif;
+      }
+      .header-right .contact {
+        font-weight: bold;
+        font-size: 10pt;
+        color: #1a3c6e;
+      }
+
+      /* ── Invoice meta ── */
+      .invoice-meta {
+        display: flex;
+        justify-content: space-between;
+        background: #f0f4f8;
+        border: 1px solid #dce3ea;
+        border-radius: 4px;
+        padding: 10px 14px;
+        margin-bottom: 14px;
+      }
+      .invoice-meta .block {
+      }
+      .invoice-meta .label {
+        font-size: 8pt;
+        color: #888;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+      .invoice-meta .value {
+        font-size: 11pt;
+        font-weight: bold;
+        color: #1a1a1a;
+        margin-top: 1px;
+      }
+      .invoice-meta .value.invoice-num {
+        color: #c0392b;
+      }
+
+      /* ── Customer & Vehicle ── */
+      .detail-row {
+        display: flex;
+        gap: 12px;
+        margin-bottom: 14px;
+      }
+      .detail-box {
+        flex: 1;
+        border: 1px solid #dce3ea;
+        border-radius: 4px;
+        padding: 10px 14px;
+      }
+      .detail-box .box-title {
+        font-size: 8pt;
+        font-weight: bold;
+        color: #888;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 6px;
+        border-bottom: 1px solid #eee;
+        padding-bottom: 4px;
+      }
+      .detail-box .row {
+        display: flex;
+        margin-bottom: 3px;
+        font-size: 9.5pt;
+      }
+      .detail-box .row .lbl {
+        color: #666;
+        width: 100px;
+        flex-shrink: 0;
+      }
+      .detail-box .row .val {
+        font-weight: bold;
+      }
+
+      /* ── Parts table ── */
+      table.items {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 14px;
+      }
+      table.items thead tr {
+        background: #1a3c6e;
+        color: white;
+      }
+      table.items th {
+        padding: 8px 10px;
+        text-align: left;
+        font-size: 9.5pt;
+        font-weight: bold;
+      }
+      table.items th.right {
+        text-align: right;
+      }
+      table.items td {
+        padding: 7px 10px;
+        font-size: 9.5pt;
+        border-bottom: 1px solid #eef0f3;
+      }
+      table.items td.right {
+        text-align: right;
+      }
+      table.items tr:nth-child(even) td {
+        background: #f8f9fb;
+      }
+      table.items tr.labor-row td {
+        background: #fff8f0;
+        font-style: italic;
+        color: #555;
+      }
+      table.items tr.labor-row td:first-child {
+        font-style: normal;
+        font-weight: bold;
+        color: #333;
+      }
+
+      /* ── Totals ── */
+      .totals-wrap {
+        display: flex;
+        justify-content: flex-end;
+        margin-bottom: 20px;
+      }
+      .totals {
+        width: 260px;
+        border: 1px solid #dce3ea;
+        border-radius: 4px;
+        overflow: hidden;
+      }
+      .totals .t-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 7px 14px;
+        font-size: 10pt;
+        border-bottom: 1px solid #eef0f3;
+      }
+      .totals .t-row .t-label {
+        color: #555;
+      }
+      .totals .t-row .t-value {
+        font-weight: bold;
+      }
+      .totals .t-row.grand {
+        background: #1a3c6e;
+        color: white;
+        padding: 10px 14px;
+      }
+      .totals .t-row.grand .t-label {
+        color: #cce;
+        font-weight: bold;
+        font-size: 11pt;
+      }
+      .totals .t-row.grand .t-value {
+        color: white;
+        font-size: 13pt;
+        font-weight: bold;
+      }
+
+      /* ── Footer ── */
+      .footer {
+        border-top: 2px solid #eee;
+        padding-top: 10px;
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+      }
+      .footer .note {
+        font-size: 8.5pt;
+        color: #777;
+        max-width: 60%;
+        line-height: 1.5;
+      }
+      .footer .sign {
+        text-align: center;
+        font-size: 9pt;
+        color: #555;
+      }
+      .footer .sign .sign-line {
+        border-top: 1px solid #999;
+        width: 160px;
+        margin: 30px auto 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- HEADER -->
+    <div class="header">
+      <div class="header-logo">
+        <div class="tvs-badge">TVS</div>
+      </div>
+      <div class="header-main">
+        <div class="shop-hindi">श्री पार्वती मोटर्स</div>
+        <div class="shop-english">SHRI PARVATI MOTORS</div>
+        <div class="tagline">
+          सभी गाड़ियों की सर्विस एवं ऑरिजिनल पार्ट्स उपलब्ध है।
+        </div>
+      </div>
+      <div class="header-right">
+        <div>बस स्टैंड, अमलाहा</div>
+        <div>Bus Stand, Amlaha</div>
+        <div class="contact">📞 9926452638 / 9343219256</div>
+        <div style="font-size: 8.5pt; color: #888">हेमेन्द्रसिंह मेवाड़ा</div>
+      </div>
+    </div>
+
+    <!-- INVOICE META -->
+    <div class="invoice-meta">
+      <div class="block">
+        <div class="label">Invoice No.</div>
+        <div class="value invoice-num">JOB-{{ job_id }}</div>
+      </div>
+      <div class="block">
+        <div class="label">Date</div>
+        <div class="value">{{ invoice_date }}</div>
+      </div>
+      <div class="block">
+        <div class="label">Status</div>
+        <div class="value">Completed</div>
+      </div>
+    </div>
+
+    <!-- CUSTOMER + VEHICLE DETAILS -->
+    <div class="detail-row">
+      <div class="detail-box">
+        <div class="box-title">👤 Customer Details</div>
+        <div class="row">
+          <span class="lbl">Name</span
+          ><span class="val">{{ customer_name }}</span>
+        </div>
+        <div class="row">
+          <span class="lbl">Phone</span
+          ><span class="val">{{ customer_phone }}</span>
+        </div>
+      </div>
+      <div class="detail-box">
+        <div class="box-title">🏍️ Vehicle Details</div>
+        <div class="row">
+          <span class="lbl">Reg. Number</span
+          ><span class="val">{{ vehicle_reg }}</span>
+        </div>
+        <div class="row">
+          <span class="lbl">Mechanic</span
+          ><span class="val">{{ mechanic_name }}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- PARTS + LABOUR TABLE -->
+    <table class="items">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Description</th>
+          <th class="right">Qty</th>
+          <th class="right">Rate (₹)</th>
+          <th class="right">Amount (₹)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for line in parts %}
+        <tr>
+          <td>{{ loop.index }}</td>
+          <td>{{ line.name }}</td>
+          <td class="right">{{ line.quantity }}</td>
+          <td class="right">{{ line.unit_price }}</td>
+          <td class="right">{{ line.line_total }}</td>
+        </tr>
+        {% endfor %} {% if labor_hours_val > 0 %}
+        <tr class="labor-row">
+          <td>{{ parts|length + 1 }}</td>
+          <td>Labour Charges</td>
+          <td class="right">{{ labor_hours }} hrs</td>
+          <td class="right">{{ labor_rate }}</td>
+          <td class="right">{{ labor_cost }}</td>
+        </tr>
+        {% endif %}
+      </tbody>
+    </table>
+
+    <!-- TOTALS -->
+    <div class="totals-wrap">
+      <div class="totals">
+        <div class="t-row">
+          <span class="t-label">Parts Total</span>
+          <span class="t-value">₹{{ parts_subtotal }}</span>
+        </div>
+        {% if labor_hours_val > 0 %}
+        <div class="t-row">
+          <span class="t-label">Labour Total</span>
+          <span class="t-value">₹{{ labor_cost }}</span>
+        </div>
+        {% endif %}
+        <div class="t-row grand">
+          <span class="t-label">TOTAL DUE</span>
+          <span class="t-value">₹{{ grand_total }}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- FOOTER -->
+    <div class="footer">
+      <div class="note">
+        ✅ सभी पार्ट्स ऑरिजिनल हैं।<br />
+        Thank you for choosing Shri Parvati Motors.<br />
+        <span style="color: #c0392b"
+          >कृपया बिल साथ रखें। / Please retain this invoice.</span
+        >
+      </div>
+      <div class="sign">
+        <div class="sign-line"></div>
+        Authorised Signatory<br />
+        <strong>Shri Parvati Motors</strong>
+      </div>
+    </div>
+  </body>
+</html>

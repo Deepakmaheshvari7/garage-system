@@ -168,8 +168,8 @@ def _build_pdf(d: dict) -> bytes:
     # ── INVOICE META ────────────────────────────────────────────────────────
     meta = Table([[
         _p(f"Invoice No.:  JOB-{d['job_id']}", 10, RED, "Helvetica-Bold"),
-        _p(f"Date:  {d['invoice_date']}", 10, colors.black, "Helvetica-Bold", TA_CENTER),
         _p("", 10),
+        _p(f"Date:  {d['invoice_date']}", 10, colors.black, "Helvetica-Bold", TA_RIGHT),
     ]], colWidths=[W/3, W/3, W/3])
     meta.setStyle(TableStyle([
         ("BACKGROUND",    (0,0),(-1,-1), LIGHT_GREY),

@@ -88,7 +88,6 @@
       /* ── Invoice meta ── */
       .invoice-meta {
         display: flex;
-        justify-content: space-between;
         background: #f0f4f8;
         border: 1px solid #dce3ea;
         border-radius: 4px;
@@ -96,6 +95,12 @@
         margin-bottom: 14px;
       }
       .invoice-meta .block {
+        margin-right: 48px;
+      }
+      .invoice-meta .block.date-block {
+        margin-left: auto;
+        margin-right: 0;
+        text-align: right;
       }
       .invoice-meta .label {
         font-size: 8pt;
@@ -288,7 +293,7 @@
         <div class="label">Status</div>
         <div class="value">Completed</div>
       </div>
-      <div class="block" style="margin-left: auto; text-align: right">
+      <div class="block date-block">
         <div class="label">Date</div>
         <div class="value">{{ invoice_date }}</div>
       </div>

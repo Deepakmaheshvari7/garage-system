@@ -1,7 +1,8 @@
 """
 Streamlit frontend — Shri Parvati Motors
 """
-import base64, os
+import base64, os, threading, time
+import requests
 import streamlit as st
 import api_client as api
 
@@ -10,6 +11,22 @@ st.set_page_config(
     page_icon="🏍️",
     layout="wide",
 )
+
+# ── Keep-alive: ping the backend so Render's free tier doesn't sleep ─────────
+@st.cache_resource(ttl=None)
+def _start_keepalive():
+    def _ping():
+        while True:
+            try:
+                requests.get(f"{api.API_BASE_URL}/docs", timeout=5)
+            except Exception:
+                pass
+            time.sleep(600)  # every 10 minutes
+    t = threading.Thread(target=_ping, daemon=True)
+    t.start()
+    return True
+
+_start_keepalive()
 
 # ── Global design layer — minimal, works with Streamlit's native layout ──────
 st.markdown("""

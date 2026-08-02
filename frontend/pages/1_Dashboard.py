@@ -27,21 +27,30 @@ with st.spinner("Loading..."):
     inv_cats = api.get_fast("/api/dashboard/inventory-by-category")
     top_sell = api.get_fast("/api/dashboard/top-selling")
 
-# ── Key metrics ───────────────────────────────────────────────────────────────
+# ── Business Summary ──────────────────────────────────────────────────────────
 if metrics:
-    c1, c2, c3, c4, c5 = st.columns(5)
+    st.subheader("Business Summary")
+    c1, c2, c3 = st.columns(3)
     c1.metric("Today's Revenue", f"₹{metrics['revenue_today']:,.0f}")
     c2.metric("Active Jobs", metrics["active_jobs"])
     c3.metric(f"Revenue — {metrics.get('month_name', 'This Month')}",
               f"₹{metrics['revenue_month']:,.0f}")
-    c4.metric("Inventory Items", metrics["total_items"])
-    c5.metric("Low Stock", metrics["low_stock_count"])
 
+    # ── Inventory Summary ─────────────────────────────────────────────────────
+    st.subheader("Inventory Summary")
+    i1, i2 = st.columns(2)
+    i1.metric("Inventory Items", metrics["total_items"])
+    i2.metric("Low Stock", metrics["low_stock_count"])
+
+    b1, b2 = st.columns(2)
+    if b1.button("📦 View all inventory items", use_container_width=True):
+        st.session_state.pop("show_low_stock", None)
+        st.switch_page("pages/2_Inventory.py")
     low = metrics["low_stock_count"]
-    if low > 0:
-        if st.button(f"⚠️ View {low} low-stock item(s)"):
-            st.session_state["show_low_stock"] = True
-            st.switch_page("pages/2_Inventory.py")
+    if b2.button(f"⚠️ View {low} low-stock item(s)", use_container_width=True,
+                 disabled=low == 0):
+        st.session_state["show_low_stock"] = True
+        st.switch_page("pages/2_Inventory.py")
 
 st.divider()
 

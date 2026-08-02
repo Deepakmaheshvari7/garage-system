@@ -178,6 +178,8 @@ def _build_pdf(d: dict) -> bytes:
         ("BOTTOMPADDING", (0,0),(-1,-1), 7),
         ("LEFTPADDING",   (0,0),(-1,-1), 10),
         ("RIGHTPADDING",  (0,0),(-1,-1), 10),
+        ("LEFTPADDING",   (2,0), (2,0), 20),  # Push date cell content to the right
+        ("ALIGN",         (2,0), (2,0), "RIGHT"),  # Align content right in the third column
     ]))
     story.append(meta)
     story.append(Spacer(1, 3*mm))

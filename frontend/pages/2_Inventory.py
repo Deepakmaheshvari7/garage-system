@@ -33,106 +33,100 @@ CATEGORIES = ["Engine", "Body", "Electrical", "Consumable", "Transmission", "Acc
 BRANDS = ["Bajaj", "TVS", "Hero", "Honda", "Royal Enfield", "Suzuki", "Yamaha", "Universal"]
 
 
-@st.dialog("Edit Part")
-def edit_part_dialog(part: dict):
-    """Edit an existing part. Part Number stays editable but must stay unique."""
-    with st.form("edit_part_form"):
-        c1, c2 = st.columns(2)
-        part_number = c1.text_input("Part Number", value=part.get("part_number") or "")
-        name = c2.text_input("Part Name *", value=part.get("name") or "")
-        c3, c4 = st.columns(2)
-        cur_cat = part.get("category")
-        category = c3.selectbox(
-            "Category *", CATEGORIES,
-            index=CATEGORIES.index(cur_cat) if cur_cat in CATEGORIES else 0,
-        )
-        min_threshold = c4.number_input(
-            "Min Stock Alert", min_value=0, step=1,
-            value=int(part.get("min_threshold") or 5),
-        )
-        c5, c6 = st.columns(2)
-        cur_brand = part.get("brand")
-        brand = c5.selectbox(
-            "Brand", ["— Select —"] + BRANDS,
-            index=(BRANDS.index(cur_brand) + 1) if cur_brand in BRANDS else 0,
-        )
-        bike_model = c6.text_input("Model Name", value=part.get("bike_model") or "")
-        c7, c8, c9 = st.columns(3)
-        cost_price = c7.number_input(
-            "Cost Price (₹)", min_value=0.0, step=1.0,
-            value=float(part.get("cost_price") or 0.0),
-        )
-        selling_price = c8.number_input(
-            "Selling Price (₹) *", min_value=0.0, step=1.0,
-            value=float(part.get("selling_price") or 0.0),
-        )
-        stock_quantity = c9.number_input(
-            "Current Quantity", min_value=0, step=1,
-            value=int(part.get("stock_quantity") or 0),
-        )
-        saved = st.form_submit_button("Save changes", use_container_width=True,
-                                      type="primary")
-
-    if saved:
-        errors = []
-        if not name.strip():
-            errors.append("Part Name is required.")
-        if selling_price <= 0:
-            errors.append("Selling Price must be greater than 0.")
-        if errors:
-            for e in errors:
-                st.warning(e)
-            return
-        payload = {
-            "part_number": part_number.strip() or None,
-            "name": name.strip(),
-            "category": category,
-            "min_threshold": int(min_threshold),
-            "brand": brand if brand != "— Select —" else None,
-            "bike_model": bike_model.strip() or None,
-            "cost_price": cost_price or None,
-            "selling_price": selling_price,
-            "stock_quantity": int(stock_quantity),
-        }
-        if api.patch(f"/api/inventory/{part['part_id']}", json=payload):
-            st.session_state.pop("edit_part", None)
-            st.success(f"'{name}' updated.")
-            st.rerun()
-
-
 if is_admin:
-    with st.expander("Add a new part"):
-        # ── Step 1: real-time Part Number lookup (outside the form so it
-        #    fires as soon as the field loses focus / Enter is pressed) ──
-        pn_input = st.text_input(
-            "Part Number", placeholder="e.g. BJ-ENG-0042",
-            help="Unique identifier. Checked instantly — if it already exists "
-                 "you'll be offered an Edit button instead.",
-        )
-        pn = pn_input.strip()
-        existing_part = None
-        if pn:
-            status, body = api.get_quiet(f"/api/inventory/by-part-number/{pn}")
-            if status == 200 and body:
-                existing_part = body
+    # ── Real-time Part Number check — always visible, fires on blur/Enter ──
+    pn_input = st.text_input(
+        "Part Number", placeholder="e.g. BJ-ENG-0042",
+        key="pn_lookup",
+        help="Type a Part Number and press Enter / click away. If it already "
+             "exists you'll get an Edit button; if not, the Add Part form opens.",
+    )
+    pn = pn_input.strip()
+    existing_part = None
+    if pn:
+        status, body = api.get_quiet(f"/api/inventory/by-part-number/{pn}")
+        if status == 200 and body:
+            existing_part = body
 
-        if existing_part:
-            st.warning(
-                f"Part already exists: **{existing_part['name']}** "
-                f"(stock: {existing_part['stock_quantity']}). "
-                "Click **Edit Part** to view and modify it — a duplicate "
-                "will not be created."
+    if existing_part:
+        st.warning(
+            f"⚠️ Part Number **{pn}** already exists: **{existing_part['name']}** "
+            f"(stock: {existing_part['stock_quantity']}). "
+            "A duplicate will not be created."
+        )
+        if st.button("✏️ Edit Part", type="primary", key="edit_from_lookup"):
+            st.session_state["edit_part"] = existing_part
+    elif pn:
+        st.success(f"✅ Part Number **{pn}** is available — fill in the rest below.")
+
+    # ── Edit panel (replaces the add form when a part is being edited) ──
+    editing = st.session_state.get("edit_part")
+    if editing:
+        st.subheader(f"Edit Part — {editing['name']}")
+        with st.form("edit_part_form"):
+            c1, c2 = st.columns(2)
+            e_pn = c1.text_input("Part Number", value=editing.get("part_number") or "")
+            e_name = c2.text_input("Part Name *", value=editing.get("name") or "")
+            c3, c4 = st.columns(2)
+            cur_cat = editing.get("category")
+            e_category = c3.selectbox(
+                "Category *", CATEGORIES,
+                index=CATEGORIES.index(cur_cat) if cur_cat in CATEGORIES else 0,
             )
-            if st.button("✏️ Edit Part", type="primary"):
-                st.session_state["edit_part"] = existing_part
-                st.rerun()
-        else:
-            if pn:
-                st.caption(f"✅ Part Number '{pn}' is available.")
-            # ── Step 2: normal Add Part workflow ──
+            e_min = c4.number_input("Min Stock Alert", min_value=0, step=1,
+                                    value=int(editing.get("min_threshold") or 5))
+            c5, c6 = st.columns(2)
+            cur_brand = editing.get("brand")
+            e_brand = c5.selectbox(
+                "Brand", ["— Select —"] + BRANDS,
+                index=(BRANDS.index(cur_brand) + 1) if cur_brand in BRANDS else 0,
+            )
+            e_model = c6.text_input("Model Name", value=editing.get("bike_model") or "")
+            c7, c8, c9 = st.columns(3)
+            e_cost = c7.number_input("Cost Price (₹)", min_value=0.0, step=1.0,
+                                     value=float(editing.get("cost_price") or 0.0))
+            e_sell = c8.number_input("Selling Price (₹) *", min_value=0.0, step=1.0,
+                                     value=float(editing.get("selling_price") or 0.0))
+            e_qty = c9.number_input("Current Quantity", min_value=0, step=1,
+                                    value=int(editing.get("stock_quantity") or 0))
+            save_col, cancel_col = st.columns(2)
+            saved = save_col.form_submit_button("💾 Save changes", use_container_width=True, type="primary")
+            cancelled = cancel_col.form_submit_button("✖ Cancel", use_container_width=True)
+
+        if cancelled:
+            st.session_state.pop("edit_part", None)
+            st.rerun()
+        if saved:
+            errs = []
+            if not e_name.strip():
+                errs.append("Part Name is required.")
+            if e_sell <= 0:
+                errs.append("Selling Price must be greater than 0.")
+            if errs:
+                for e in errs:
+                    st.warning(e)
+            else:
+                payload = {
+                    "part_number": e_pn.strip() or None,
+                    "name": e_name.strip(),
+                    "category": e_category,
+                    "min_threshold": int(e_min),
+                    "brand": e_brand if e_brand != "— Select —" else None,
+                    "bike_model": e_model.strip() or None,
+                    "cost_price": e_cost or None,
+                    "selling_price": e_sell,
+                    "stock_quantity": int(e_qty),
+                }
+                if api.patch(f"/api/inventory/{editing['part_id']}", json=payload):
+                    st.session_state.pop("edit_part", None)
+                    st.success(f"'{e_name}' updated.")
+                    st.rerun()
+
+    # ── Add Part form — only shown when NOT editing and PN is not taken ──
+    elif not existing_part:
+        with st.expander("Add a new part", expanded=bool(pn)):
             with st.form("add_part_form", clear_on_submit=True):
-                c2, = st.columns(1)
-                name = c2.text_input("Part Name *", placeholder="e.g. Clutch Plate Set")
+                name = st.text_input("Part Name *", placeholder="e.g. Clutch Plate Set")
                 c3, c4 = st.columns(2)
                 category = c3.selectbox("Category *", CATEGORIES)
                 min_threshold = c4.number_input("Min Stock Alert", min_value=0, value=5, step=1,
@@ -174,10 +168,6 @@ if is_admin:
                     if api.post("/api/inventory", json=payload):
                         st.success(f"'{name}' added to inventory.")
                         st.rerun()
-
-# Open the edit dialog if one was requested (from lookup above or the grid below)
-if is_admin and st.session_state.get("edit_part"):
-    edit_part_dialog(st.session_state["edit_part"])
 
 st.divider()
 

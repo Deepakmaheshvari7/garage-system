@@ -3,6 +3,7 @@ Thin wrapper around the FastAPI backend, used by all Streamlit pages.
 Handles auth headers, consistent error display, and response caching
 to avoid redundant API calls on every Streamlit rerun.
 """
+# v2 — includes get_quiet() for silent lookups
 import os
 
 import requests

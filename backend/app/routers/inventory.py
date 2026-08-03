@@ -69,6 +69,38 @@ def _serialize(item: InventoryItem, role: RoleEnum):
     return InventoryItemPublicOut.model_validate(item)
 
 
+def _normalize_part_number(value):
+    """Trim whitespace; treat empty/blank as None. Comparison stays
+    case-sensitive to match existing data and the DB unique index."""
+    if value is None:
+        return None
+    cleaned = str(value).strip()
+    return cleaned or None
+
+
+def _find_by_part_number(db: Session, part_number: str):
+    return db.query(InventoryItem).filter(
+        InventoryItem.part_number == part_number
+    ).first()
+
+
+@router.get("/by-part-number/{part_number}")
+def get_by_part_number(
+    part_number: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Real-time lookup used by the Add Part form. Returns the part if the
+    part number exists, 404 if it does not."""
+    pn = _normalize_part_number(part_number)
+    if not pn:
+        raise HTTPException(status_code=400, detail="Part number is empty.")
+    item = _find_by_part_number(db, pn)
+    if not item:
+        raise HTTPException(status_code=404, detail="Part number not found.")
+    return _serialize(item, current_user.role)
+
+
 @router.get("")
 def list_inventory(
     db: Session = Depends(get_db),
@@ -95,17 +127,17 @@ def create_item(
     db: Session = Depends(get_db),
     _admin: User = Depends(require_role(RoleEnum.ADMIN)),
 ):
-    if payload.part_number:
-        existing = db.query(InventoryItem).filter(
-            InventoryItem.part_number == payload.part_number
-        ).first()
+    data = payload.model_dump()
+    data["part_number"] = _normalize_part_number(data.get("part_number"))
+    if data["part_number"]:
+        existing = _find_by_part_number(db, data["part_number"])
         if existing:
             raise HTTPException(
-                status_code=400,
-                detail=f"Part number '{payload.part_number}' already exists "
+                status_code=409,
+                detail=f"Part number '{data['part_number']}' already exists "
                        f"(part: {existing.name}).",
             )
-    item = InventoryItem(**payload.model_dump())
+    item = InventoryItem(**data)
     db.add(item)
     db.commit()
     db.refresh(item)
@@ -122,17 +154,19 @@ def update_item(
     item = db.query(InventoryItem).filter(InventoryItem.part_id == part_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Part not found")
-    if payload.part_number and payload.part_number != item.part_number:
-        existing = db.query(InventoryItem).filter(
-            InventoryItem.part_number == payload.part_number
-        ).first()
-        if existing:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Part number '{payload.part_number}' already exists "
-                       f"(part: {existing.name}).",
-            )
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    updates = payload.model_dump(exclude_unset=True)
+    if "part_number" in updates:
+        new_pn = _normalize_part_number(updates["part_number"])
+        updates["part_number"] = new_pn
+        if new_pn and new_pn != item.part_number:
+            existing = _find_by_part_number(db, new_pn)
+            if existing and existing.part_id != part_id:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Part number '{new_pn}' already exists "
+                           f"(part: {existing.name}).",
+                )
+    for field, value in updates.items():
         setattr(item, field, value)
     db.commit()
     db.refresh(item)
@@ -234,9 +268,8 @@ def bulk_upload(
             selling_price = float(sp_raw)
 
             # Part number — optional but must be unique
-            part_number = _get(row, "part_number")
+            part_number = _normalize_part_number(_get(row, "part_number"))
             if part_number is not None:
-                part_number = str(part_number).strip()
                 if part_number in existing_part_numbers:
                     skipped_rows.append(row_num)
                     errors.append(

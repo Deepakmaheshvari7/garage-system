@@ -145,6 +145,22 @@ def get_raw(path: str, params: dict | None = None):
     )
 
 
+def get_quiet(path: str):
+    """GET that returns (status_code, json_body) without showing any error.
+    Used for lookups where 404 is an expected outcome, not a failure."""
+    try:
+        resp = requests.get(
+            f"{API_BASE_URL}{path}", headers=_headers(), timeout=10
+        )
+    except requests.exceptions.RequestException:
+        return None, None
+    try:
+        body = resp.json()
+    except Exception:
+        body = None
+    return resp.status_code, body
+
+
 def _handle(resp: requests.Response):
     if resp.status_code == 401:
         st.warning("Your session has expired. Please log in again.")

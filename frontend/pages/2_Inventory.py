@@ -21,14 +21,23 @@ if role in ("Admin", "Desk"):
         TEMPLATE_COLS = ["part_number", "name", "category", "brand", "bike_model",
                          "stock_quantity", "min_threshold", "cost_price", "selling_price"]
         template_df = pd.DataFrame(columns=TEMPLATE_COLS)
-        buf = io.BytesIO()
-        template_df.to_excel(buf, index=False, engine="openpyxl")
-        st.download_button(
-            "📥 Download blank template (.xlsx)",
-            data=buf.getvalue(),
-            file_name="inventory_template.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )
+        try:
+            buf = io.BytesIO()
+            template_df.to_excel(buf, index=False, engine="openpyxl")
+            st.download_button(
+                "📥 Download blank template (.xlsx)",
+                data=buf.getvalue(),
+                file_name="inventory_template.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        except ImportError:
+            # openpyxl not installed — fall back to CSV (opens fine in Excel)
+            st.download_button(
+                "📥 Download blank template (.csv)",
+                data=template_df.to_csv(index=False),
+                file_name="inventory_template.csv",
+                mime="text/csv",
+            )
         st.caption(
             "Fill in the template and upload it below. "
             "**Required:** name, selling_price. "

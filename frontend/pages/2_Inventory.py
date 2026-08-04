@@ -1,3 +1,5 @@
+import io
+
 import pandas as pd
 import streamlit as st
 
@@ -15,7 +17,24 @@ is_admin = role == "Admin"
 # --- Bulk import (Admin & Desk) ---
 if role in ("Admin", "Desk"):
     with st.expander("Bulk import from supplier catalog (.xlsx / .csv)"):
-        st.caption("Expected columns: Name, Category, Stock, Price. 'Cost' is optional and Admin-only.")
+        # Downloadable blank template with the exact column order the importer expects
+        TEMPLATE_COLS = ["part_number", "name", "category", "brand", "bike_model",
+                         "stock_quantity", "min_threshold", "cost_price", "selling_price"]
+        template_df = pd.DataFrame(columns=TEMPLATE_COLS)
+        buf = io.BytesIO()
+        template_df.to_excel(buf, index=False, engine="openpyxl")
+        st.download_button(
+            "📥 Download blank template (.xlsx)",
+            data=buf.getvalue(),
+            file_name="inventory_template.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        st.caption(
+            "Fill in the template and upload it below. "
+            "**Required:** name, selling_price. "
+            "**part_number** must be unique — duplicates are skipped. "
+            "cost_price is optional (Admin-only)."
+        )
         uploaded = st.file_uploader("Choose a file", type=["xlsx", "xls", "csv"])
         if uploaded is not None and st.button("Import"):
             files = {"file": (uploaded.name, uploaded.getvalue())}

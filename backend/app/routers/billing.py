@@ -217,7 +217,8 @@ def _build_pdf(d: dict) -> bytes:
     story.append(Spacer(1, 4*mm))
 
     # ── LINE ITEMS ──────────────────────────────────────────────────────────
-    cw = [8*mm, W - 52*mm, 12*mm, 16*mm, 16*mm]
+    # Amount column widened (16mm → 26mm) so "Rs. 1191.00" never wraps.
+    cw = [8*mm, W - 60*mm, 12*mm, 14*mm, 26*mm]
 
     def TH(t): return _p(t, 9, WHITE, "Helvetica-Bold", TA_CENTER)
 

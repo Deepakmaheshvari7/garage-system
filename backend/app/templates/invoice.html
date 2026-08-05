@@ -202,7 +202,7 @@
         margin-bottom: 20px;
       }
       .totals {
-        width: 260px;
+        width: 300px;
         border: 1px solid #dce3ea;
         border-radius: 4px;
         overflow: hidden;
@@ -216,9 +216,14 @@
       }
       .totals .t-row .t-label {
         color: #555;
+        white-space: nowrap;
       }
       .totals .t-row .t-value {
         font-weight: bold;
+        white-space: nowrap;
+        flex-shrink: 0;
+        padding-left: 16px;
+        text-align: right;
       }
       .totals .t-row.grand {
         background: #1a3c6e;
@@ -232,8 +237,10 @@
       }
       .totals .t-row.grand .t-value {
         color: white;
-        font-size: 13pt;
+        font-size: 12.5pt;
         font-weight: bold;
+        white-space: nowrap;
+        flex-shrink: 0;
       }
 
       /* ── Footer ── */

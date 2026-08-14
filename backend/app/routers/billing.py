@@ -21,6 +21,9 @@ from app.models.user import User, RoleEnum
 
 router = APIRouter(prefix="/api/billing", tags=["billing"])
 
+MAX_INVOICE_LINE_ITEMS = 80
+MAX_INVOICE_GRAND_TOTAL = 200000.0
+
 # ── Colours ──────────────────────────────────────────────────────────────────
 DARK_BLUE  = colors.HexColor("#1a3c6e")
 RED        = colors.HexColor("#c0392b")
@@ -309,6 +312,12 @@ def preview_invoice_data(
     job = db.query(JobCard).filter(JobCard.job_id == job_id).first()
     if not job:
         raise HTTPException(404, "Job card not found")
+    if len(job.parts_used) > MAX_INVOICE_LINE_ITEMS:
+        raise HTTPException(
+            413,
+            f"Invoice preview is limited to {MAX_INVOICE_LINE_ITEMS} line items. "
+            "This job is too large to generate in the browser.",
+        )
     d = _calculate(job)
     return {
         **d,
@@ -332,7 +341,21 @@ def generate_invoice(
         raise HTTPException(
             400, f"Job is '{job.status.value}' — set to Ready_For_Billing first.")
 
-    pdf_bytes = _build_pdf(_calculate(job))
+    if len(job.parts_used) > MAX_INVOICE_LINE_ITEMS:
+        raise HTTPException(
+            413,
+            f"Invoice generation is limited to {MAX_INVOICE_LINE_ITEMS} line items. "
+            "This job is too large to render as a PDF in the web app.",
+        )
+
+    d = _calculate(job)
+    if d["grand_total"] > MAX_INVOICE_GRAND_TOTAL:
+        raise HTTPException(
+            413,
+            f"Invoice total exceeds the supported limit of ₹{MAX_INVOICE_GRAND_TOTAL:,.0f}.",
+        )
+
+    pdf_bytes = _build_pdf(d)
 
     if job.status == JobStatusEnum.READY_FOR_BILLING:
         job.status = JobStatusEnum.COMPLETED

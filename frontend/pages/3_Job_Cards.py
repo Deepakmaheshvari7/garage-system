@@ -10,13 +10,34 @@ left, right = st.columns([1, 2], gap="large")
 
 # ── LEFT: Job list ─────────────────────────────────────────────────────────────
 with left:
+    def _reset_job_page():
+        st.session_state["jobcards_page"] = 1
+
     status_filter = st.selectbox(
         "Filter", ["All", "Open", "In-Progress", "Ready_For_Billing", "Completed"],
-        label_visibility="collapsed"
+        label_visibility="collapsed",
+        key="jobcards_status_filter",
+        on_change=_reset_job_page,
     )
-    jobs = api.get_fast("/api/jobcards") or []
+    page = st.session_state.get("jobcards_page", 1)
+    page_size = st.session_state.get("jobcards_page_size", 25)
+    list_params = {"page": page, "page_size": page_size}
     if status_filter != "All":
-        jobs = [j for j in jobs if j["status"] == status_filter]
+        list_params["status"] = status_filter
+    jobs_payload = api.get_fast("/api/jobcards", params=list_params) or {}
+    jobs = jobs_payload.get("items", []) if isinstance(jobs_payload, dict) else jobs_payload or []
+
+    if isinstance(jobs_payload, dict):
+        total_pages = jobs_payload.get("total_pages", 1)
+        total_jobs = jobs_payload.get("total", 0)
+        st.caption(f"Page {page} of {total_pages} — {total_jobs} total jobs")
+        nav = st.columns([1, 1])
+        if nav[0].button("← Prev", disabled=page <= 1):
+            st.session_state["jobcards_page"] = max(1, page - 1)
+            st.rerun()
+        if nav[1].button("Next →", disabled=page >= total_pages):
+            st.session_state["jobcards_page"] = min(total_pages, page + 1)
+            st.rerun()
 
     STATUS_ICON = {"Open": "🟡", "In-Progress": "🔵",
                    "Ready_For_Billing": "🟠", "Completed": "🟢"}
@@ -47,14 +68,32 @@ with left:
             if not vehicle_reg.strip():
                 st.warning("Vehicle Reg. is required.")
             else:
+                chosen_mech_id = mech_opts[mech_label]
+
+                # Re-fetch the mechanic list right before submitting so a
+                # mechanic deleted since page-load is caught here with a clean
+                # message instead of a DB FK violation on the backend.
+                if chosen_mech_id is not None:
+                    fresh = api.get("/api/users", params={"role": "Mechanic"}) or []
+                    valid_ids = {m["user_id"] for m in fresh}
+                    if chosen_mech_id not in valid_ids:
+                        st.error(
+                            f"Mechanic '{mech_label}' is no longer available. "
+                            "The list has been refreshed — please pick again."
+                        )
+                        st.rerun()
+
                 res = api.post("/api/jobcards", json={
                     "customer_name":  cust_name.strip() or None,
                     "customer_phone": cust_phone.strip() or None,
                     "vehicle_reg":    vehicle_reg.strip().upper(),
-                    "mechanic_id":    mech_opts[mech_label],
+                    "mechanic_id":    chosen_mech_id,
                     "labor_charge":   float(labor_charge),
                 })
-                if res:
+                # Only treat as success when we actually got a job_id back.
+                # api.post returns None on error (and already showed st.error),
+                # so guard against both None and a malformed/truthy body.
+                if isinstance(res, dict) and res.get("job_id"):
                     st.session_state["selected_job_id"] = res["job_id"]
                     st.success(f"Job #{res['job_id']} created!")
                     st.rerun()
@@ -88,45 +127,74 @@ with right:
     st.divider()
 
     if not is_done:
-        # Add part
+        # ── Add Part (server-side catalog search) ───────────────────────────
         st.markdown("**Add Part**")
-        inventory = api.get_fast("/api/inventory") or []
-        search = st.text_input("Search by name or part number", key="part_search",
-                               label_visibility="collapsed",
-                               placeholder="Type to search parts...")
-        filtered = [i for i in inventory
-                    if search.lower() in i["name"].lower()
-                    or search.lower() in (i.get("part_number") or "").lower()
-                    ] if search else inventory
+        part_search = st.text_input(
+            "Find a part",
+            placeholder="Search by name, part no., brand, model or category…",
+            key=f"part_search_{job['job_id']}",
+            label_visibility="collapsed",
+        ).strip()
 
-        in_stock  = [i for i in filtered if i["stock_quantity"] > 0]
-        out_stock = [i for i in filtered if i["stock_quantity"] == 0]
-        part_opts = {
-            f"{i['name']}"
-            + (f" [{i['part_number']}]" if i.get("part_number") else "")
-            + (f" — {i.get('brand','')}" if i.get("brand") else "")
-            + f"  (stock: {i['stock_quantity']})": i
-            for i in (in_stock + out_stock)
-        }
+        def _part_label(i):
+            lbl = i["name"]
+            if i.get("part_number"):
+                lbl += f" [{i['part_number']}]"
+            if i.get("brand"):
+                lbl += f" — {i['brand']}"
+            if i.get("bike_model"):
+                lbl += f" ({i['bike_model']})"
+            lbl += f"  ·  stock: {i['stock_quantity']}  ·  #{i['part_id']}"
+            return lbl
 
-        if part_opts:
+        if len(part_search) < 2:
+            st.caption("Type at least 2 characters to search the full inventory catalog.")
+        else:
+            inv_payload = api.get_fast(
+                "/api/inventory",
+                params={
+                    "page": 1,
+                    "page_size": 50,
+                    "search": part_search,
+                    "in_stock_only": True,
+                },
+            ) or {}
+            inventory = inv_payload.get("items", []) if isinstance(inv_payload, dict) else inv_payload
+            part_opts = {_part_label(i): i for i in inventory}
+            total_matches = inv_payload.get("total", len(inventory)) if isinstance(inv_payload, dict) else len(inventory)
+            if total_matches:
+                st.caption(f"{total_matches} in-stock match(es)" + (" — showing the first 50." if total_matches > 50 else "."))
+
+        if len(part_search) >= 2 and part_opts:
             p1, p2, p3 = st.columns([3, 1, 1])
-            sel_lbl  = p1.selectbox("Part", list(part_opts.keys()),
-                                    label_visibility="collapsed")
-            sel_part = part_opts[sel_lbl]
-            qty      = p2.number_input("Qty", min_value=1, value=1, step=1,
-                                       label_visibility="collapsed")
+            sel_lbl  = p1.selectbox(
+                "Part", list(part_opts.keys()),
+                                index=None,
+                placeholder="Type to search — name, part no., brand or model…",
+                label_visibility="collapsed",
+                key=f"part_pick_{job['job_id']}",
+            )
+            sel_part = part_opts.get(sel_lbl) if sel_lbl else None
+            max_qty  = max(1, sel_part["stock_quantity"]) if sel_part else 1
+            qty      = p2.number_input(
+                "Qty", min_value=1, max_value=max_qty, value=1, step=1,
+                label_visibility="collapsed",
+                key=f"part_qty_{job['job_id']}",
+                disabled=(sel_part is None),
+                help=f"Up to {max_qty} in stock" if sel_part else "Select a part first",
+            )
             add_ok   = p3.button("Add", use_container_width=True,
-                                 disabled=(sel_part["stock_quantity"] == 0))
-            if sel_part["stock_quantity"] == 0:
-                st.warning(f"'{sel_part['name']}' is out of stock.")
-            if add_ok:
+                                 disabled=(sel_part is None),
+                                 key=f"part_add_{job['job_id']}")
+            if add_ok and sel_part:
                 res = api.post(f"/api/jobcards/{job['job_id']}/parts",
                                json={"part_id": sel_part["part_id"],
                                      "quantity_used": int(qty)})
                 if res:
                     st.success(f"Added {qty} × {sel_part['name']}")
                     st.rerun()
+        elif len(part_search) >= 2:
+            st.info("No in-stock parts match that search.")
 
         # Labour charge
         st.markdown("**Labour Charge**")
@@ -146,13 +214,37 @@ with right:
 
         st.divider()
 
-    # Parts used
+    # Parts used — with inline quantity stepper (no delete/re-add needed)
     st.markdown("**Parts Used**")
     if job["parts_used"]:
         for p in job["parts_used"]:
-            c1, c2, c3, c4, c5 = st.columns([3, 1, 1, 1, 1])
+            # Flat single-level columns — Streamlit forbids nesting columns
+            # inside columns, so the − / qty / + stepper gets its own columns
+            # at the top level instead of a sub-column block.
+            if not is_done:
+                c1, cm, cv, cp, c3, c4, c5 = st.columns([3, 1, 1, 1, 1, 1, 1])
+            else:
+                c1, cv, c3, c4, c5 = st.columns([3, 2, 1, 1, 1])
             c1.write(f"**{p['part_name']}**")
-            c2.write(f"×{p['quantity_used']}")
+
+            if not is_done:
+                # Inline qty editor: − / qty / + updates stock by the delta.
+                if cm.button("−", key=f"dec_{p['mapping_id']}",
+                             help="Decrease quantity",
+                             disabled=(p["quantity_used"] <= 1)):
+                    if api.patch(f"/api/jobcards/{job['job_id']}/parts/{p['mapping_id']}",
+                                 json={"quantity_used": p["quantity_used"] - 1}):
+                        st.rerun()
+                cv.markdown(f"<div style='text-align:center'>×{p['quantity_used']}</div>",
+                            unsafe_allow_html=True)
+                if cp.button("+", key=f"inc_{p['mapping_id']}",
+                             help="Increase quantity"):
+                    if api.patch(f"/api/jobcards/{job['job_id']}/parts/{p['mapping_id']}",
+                                 json={"quantity_used": p["quantity_used"] + 1}):
+                        st.rerun()
+            else:
+                cv.write(f"×{p['quantity_used']}")
+
             c3.write(f"₹{p['selling_price']:.0f}")
             c4.write(f"**₹{p['line_total']:.0f}**")
             if not is_done:

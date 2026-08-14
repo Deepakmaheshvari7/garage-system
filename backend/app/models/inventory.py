@@ -14,13 +14,13 @@ class InventoryItem(Base):
 
     # Basic details
     part_number = Column(String, unique=True, nullable=True, index=True)  # unique SKU / OEM number
-    name = Column(String, nullable=False)
+    name = Column(String, nullable=False, index=True)
     category = Column(String, index=True)          # Engine, Body, Electrical, etc.
     min_threshold = Column(Integer, default=5, nullable=False)
 
     # Fits which bikes
-    brand = Column(String, nullable=True)          # Bajaj, TVS, Hero, Honda, etc.
-    bike_model = Column(String, nullable=True)     # Splendor, Passion, Pulsar, etc.
+    brand = Column(String, nullable=True, index=True)          # Bajaj, TVS, Hero, Honda, etc.
+    bike_model = Column(String, nullable=True, index=True)     # Splendor, Passion, Pulsar, etc.
 
     # Price & Quantity
     cost_price = Column(Float, nullable=True)      # Admin-only, never exposed to Mechanic/Desk

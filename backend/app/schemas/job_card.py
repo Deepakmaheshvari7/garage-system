@@ -32,6 +32,10 @@ class JobPartAdd(BaseModel):
     quantity_used: int
 
 
+class JobPartQuantityUpdate(BaseModel):
+    quantity_used: int
+
+
 class JobPartOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     mapping_id:    int

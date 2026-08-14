@@ -3,7 +3,7 @@ import calendar
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.core.database import get_db
 from app.core.deps import require_role
@@ -16,7 +16,14 @@ router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
 
 def _completed_jobs(db, date_filter=None):
-    q = db.query(JobCard).filter(JobCard.status == JobStatusEnum.COMPLETED)
+    q = (
+        db.query(JobCard)
+        .options(
+            selectinload(JobCard.parts_used).selectinload(JobPart.part),
+            selectinload(JobCard.mechanic),
+        )
+        .filter(JobCard.status == JobStatusEnum.COMPLETED)
+    )
     if date_filter:
         q = q.filter(func.date(JobCard.updated_at) >= date_filter)
     return q.all()
@@ -32,35 +39,57 @@ def top_level_metrics(db: Session = Depends(get_db),
                       _admin: User = Depends(require_role(RoleEnum.ADMIN))):
     today = date.today()
 
-    # Today revenue
-    today_jobs = [j for j in _completed_jobs(db) if j.updated_at and j.updated_at.date() == today]
-    revenue_today = sum(_job_revenue(j) for j in today_jobs)
+    # Aggregate revenue directly in SQL to avoid loading every completed job into Python.
+    parts_revenue_today = (
+        db.query(func.coalesce(func.sum(JobPart.quantity_used * InventoryItem.selling_price), 0.0))
+        .join(InventoryItem, InventoryItem.part_id == JobPart.part_id)
+        .join(JobCard, JobCard.job_id == JobPart.job_id)
+        .filter(JobCard.status == JobStatusEnum.COMPLETED)
+        .filter(func.date(JobCard.updated_at) == today)
+        .scalar() or 0.0
+    )
+    labor_revenue_today = (
+        db.query(func.coalesce(func.sum(JobCard.labor_charge), 0.0))
+        .filter(JobCard.status == JobStatusEnum.COMPLETED)
+        .filter(func.date(JobCard.updated_at) == today)
+        .scalar() or 0.0
+    )
 
-    # Active jobs
+    first_day = today.replace(day=1)
+    last_day = today.replace(day=calendar.monthrange(today.year, today.month)[1])
+    parts_revenue_month = (
+        db.query(func.coalesce(func.sum(JobPart.quantity_used * InventoryItem.selling_price), 0.0))
+        .join(InventoryItem, InventoryItem.part_id == JobPart.part_id)
+        .join(JobCard, JobCard.job_id == JobPart.job_id)
+        .filter(JobCard.status == JobStatusEnum.COMPLETED)
+        .filter(JobCard.updated_at >= first_day)
+        .filter(JobCard.updated_at <= last_day)
+        .scalar() or 0.0
+    )
+    labor_revenue_month = (
+        db.query(func.coalesce(func.sum(JobCard.labor_charge), 0.0))
+        .filter(JobCard.status == JobStatusEnum.COMPLETED)
+        .filter(JobCard.updated_at >= first_day)
+        .filter(JobCard.updated_at <= last_day)
+        .scalar() or 0.0
+    )
+
     active_jobs = db.query(JobCard).filter(
         JobCard.status.in_([JobStatusEnum.OPEN, JobStatusEnum.IN_PROGRESS])
     ).count()
 
-    # Current month revenue
-    first_day = today.replace(day=1)
-    last_day  = today.replace(day=calendar.monthrange(today.year, today.month)[1])
-    month_jobs = [j for j in _completed_jobs(db)
-                  if j.updated_at and first_day <= j.updated_at.date() <= last_day]
-    revenue_month = sum(_job_revenue(j) for j in month_jobs)
-
-    # Inventory counts
     total_items = db.query(InventoryItem).count()
-    low_stock   = db.query(InventoryItem).filter(
+    low_stock = db.query(InventoryItem).filter(
         InventoryItem.stock_quantity <= InventoryItem.min_threshold
     ).count()
 
     return {
-        "revenue_today":  round(revenue_today,  2),
-        "revenue_month":  round(revenue_month,  2),
-        "active_jobs":    active_jobs,
-        "total_items":    total_items,
-        "low_stock_count":low_stock,
-        "month_name":     today.strftime("%B %Y"),
+        "revenue_today": round(parts_revenue_today + labor_revenue_today, 2),
+        "revenue_month": round(parts_revenue_month + labor_revenue_month, 2),
+        "active_jobs": active_jobs,
+        "total_items": total_items,
+        "low_stock_count": low_stock,
+        "month_name": today.strftime("%B %Y"),
     }
 
 

@@ -12,8 +12,8 @@ class JobPart(Base):
     __tablename__ = "job_parts"
 
     mapping_id = Column(Integer, primary_key=True, index=True)
-    job_id = Column(Integer, ForeignKey("job_cards.job_id"), nullable=False)
-    part_id = Column(Integer, ForeignKey("inventory.part_id"), nullable=False)
+    job_id = Column(Integer, ForeignKey("job_cards.job_id"), nullable=False, index=True)
+    part_id = Column(Integer, ForeignKey("inventory.part_id"), nullable=False, index=True)
     quantity_used = Column(Integer, nullable=False)
 
     job = relationship("JobCard", back_populates="parts_used")

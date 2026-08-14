@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.core.database import Base, engine
+from app.core.migrations import run_database_migrations
 from app.models import *  # noqa: F401, F403 — ensures models register with Base.metadata
 from app.routers import auth, inventory, job_cards, billing, dashboard, users
 
@@ -42,6 +43,8 @@ def on_startup():
     # create_all is convenient for getting started, but for real schema
     # evolution over time you should migrate to Alembic migrations.
     Base.metadata.create_all(bind=engine)
+    if settings.ENV == "production" or __import__("os").getenv("RUN_DB_MIGRATIONS", "").lower() in {"1", "true", "yes"}:
+        run_database_migrations()
 
 
 @app.get("/")

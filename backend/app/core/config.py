@@ -28,6 +28,8 @@ class Settings:
     ENV: str = os.getenv("ENV", "development")
     STANDARD_LABOR_RATE: float = float(os.getenv("STANDARD_LABOR_RATE", "500.0"))
     TAX_PERCENTAGE: float = float(os.getenv("TAX_PERCENTAGE", "18.0"))
+    SQL_QUERY_LOG_ENABLED: bool = os.getenv("SQL_QUERY_LOG_ENABLED", "true").lower() in {"1", "true", "yes"}
+    SQL_QUERY_TTL_MS: int = int(os.getenv("SQL_QUERY_TTL_MS", "100"))
 
     # --- CORS (Streamlit frontend origin) ---
     FRONTEND_ORIGIN: str = os.getenv("FRONTEND_ORIGIN", "http://localhost:8501")

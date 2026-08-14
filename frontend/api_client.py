@@ -3,8 +3,9 @@ Thin wrapper around the FastAPI backend, used by all Streamlit pages.
 Handles auth headers, consistent error display, and response caching
 to avoid redundant API calls on every Streamlit rerun.
 """
-# v2 — includes get_quiet() for silent lookups
+# v3 — scoped per-path cache so a single write doesn't refetch everything
 import os
+import time
 
 import requests
 import streamlit as st
@@ -13,6 +14,24 @@ from dotenv import load_dotenv
 load_dotenv()
 
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
+
+# Default time-to-live (seconds) for cached GETs. Individual entries can be
+# refreshed early by calling invalidate_cache("/api/inventory") etc.
+_CACHE_TTL = 30
+# In-process cache: {(token, path, params_key): (timestamp, json_or_None)}.
+# The token is deliberately part of the key: list responses are role-aware
+# (for example, Admin inventory includes cost_price), so sharing a cached
+# response across users would expose data they are not allowed to see.
+_fast_cache: dict[tuple[str, str, str], tuple[float, object]] = {}
+
+
+def _cache_key(path: str, params: dict | None) -> tuple[str, str, str]:
+    token = st.session_state.get("access_token", "")
+    if params:
+        params_key = str(sorted(params.items()))
+    else:
+        params_key = ""
+    return token, path, params_key
 
 
 def _headers() -> dict:
@@ -47,7 +66,7 @@ def logout():
     for key in ("access_token", "role", "username", "user_id"):
         st.session_state.pop(key, None)
     # Clear all cached data on logout so the next user gets fresh data
-    get_cached.clear()
+    _fast_cache.clear()
 
 
 def is_authenticated() -> bool:
@@ -55,37 +74,13 @@ def is_authenticated() -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Cached GET — for read-heavy endpoints that don't change every second.
-# ttl=30 means data is re-fetched from the API at most once every 30 seconds.
-# The cache is keyed on (path, token) so different users never share data.
-# Call invalidate_cache() after any write operation to force a fresh fetch.
+# Scoped in-process cache for read-heavy GETs.
+#
+# Unlike a global st.cache_data clear, invalidate_cache(*prefixes) only drops
+# entries whose path starts with one of the given prefixes — so adding a part
+# to a job (which changes job + inventory data) no longer refetches the
+# unrelated dashboard metrics too.
 # ---------------------------------------------------------------------------
-@st.cache_data(ttl=30, show_spinner=False)
-def get_cached(path: str, token: str, params_key: str = ""):
-    """
-    Cached version of GET. Use for dashboard metrics, inventory list,
-    job card list — anything that's read-only and can tolerate being
-    30 seconds stale.
-
-    Don't use this for anything that must reflect the latest state
-    immediately after a write (use plain get() there instead, or call
-    invalidate_cache() after your write).
-    """
-    resp = requests.get(
-        f"{API_BASE_URL}{path}",
-        headers={"Authorization": f"Bearer {token}"},
-        timeout=15,
-    )
-    if resp.status_code >= 400:
-        return None
-    return resp.json()
-
-
-def invalidate_cache():
-    """Call this after any create/update/delete so the next read is fresh."""
-    get_cached.clear()
-
-
 def get(path: str, params: dict | None = None):
     """Uncached GET — use for data that must always be current."""
     resp = requests.get(
@@ -96,14 +91,74 @@ def get(path: str, params: dict | None = None):
 
 def get_fast(path: str, params: dict | None = None):
     """
-    Cached GET — use for list/read endpoints on pages that load slowly.
-    Falls back to uncached if not authenticated.
+    Cached GET for list/read endpoints. Serves from cache when fresh (within
+    _CACHE_TTL seconds) or after a write to a different path. Falls back to an
+    uncached get() if the user isn't authenticated.
     """
-    token = st.session_state.get("access_token", "")
-    if not token:
+    if not st.session_state.get("access_token"):
         return get(path, params)
-    params_key = str(sorted(params.items())) if params else ""
-    return get_cached(path, token, params_key)
+
+    key = _cache_key(path, params)
+    now = time.monotonic()
+    entry = _fast_cache.get(key)
+    if entry is not None:
+        ts, value = entry
+        if now - ts < _CACHE_TTL:
+            return value
+
+    resp = requests.get(
+        f"{API_BASE_URL}{path}", headers=_headers(), params=params, timeout=15
+    )
+    if resp.status_code >= 400:
+        # Cache misses/errors as None but still respect the TTL to avoid
+        # hammering the backend on repeated failures.
+        _fast_cache[key] = (now, None)
+        return None
+    value = resp.json()
+    _fast_cache[key] = (now, value)
+    return value
+
+
+def invalidate_cache(*prefixes: str):
+    """Drop cached GET entries so the next read is fresh.
+
+    With no arguments, clears the whole cache (backwards compatible).
+    With one or more path prefixes (e.g. "/api/inventory"), only entries
+    whose path starts with a prefix are dropped — keeping unrelated caches
+    warm so a single write doesn't force every page to refetch.
+    """
+    if not prefixes:
+        _fast_cache.clear()
+        return
+    stale = [k for k in _fast_cache if any(k[1].startswith(p) for p in prefixes)]
+    for k in stale:
+        _fast_cache.pop(k, None)
+
+
+def _cache_prefixes_for_write(path: str) -> tuple[str, ...] | None:
+    """Return the cached resource groups affected by a successful write.
+
+    Keep unrelated pages warm after normal workbench actions. Returning None
+    is intentionally conservative for paths we do not know about yet.
+    """
+    if path.startswith("/api/jobcards"):
+        prefixes = ["/api/jobcards", "/api/dashboard"]
+        if "/parts" in path:
+            prefixes.append("/api/inventory")
+        return tuple(prefixes)
+    if path.startswith("/api/inventory"):
+        return "/api/inventory", "/api/dashboard"
+    if path.startswith("/api/billing"):
+        return "/api/jobcards", "/api/dashboard"
+    return None
+
+
+def _invalidate_after_write(path: str):
+    prefixes = _cache_prefixes_for_write(path)
+    if prefixes is None:
+        invalidate_cache()
+    else:
+        invalidate_cache(*prefixes)
 
 
 def post(path: str, json: dict | None = None, files=None, data=None):
@@ -117,7 +172,7 @@ def post(path: str, json: dict | None = None, files=None, data=None):
     )
     result = _handle(resp)
     if result is not None:
-        invalidate_cache()
+        _invalidate_after_write(path)
     return result
 
 
@@ -127,7 +182,7 @@ def patch(path: str, json: dict | None = None):
     )
     result = _handle(resp)
     if result is not None:
-        invalidate_cache()
+        _invalidate_after_write(path)
     return result
 
 
@@ -135,7 +190,7 @@ def delete(path: str):
     resp = requests.delete(f"{API_BASE_URL}{path}", headers=_headers(), timeout=15)
     result = _handle(resp)
     if result is not None:
-        invalidate_cache()
+        _invalidate_after_write(path)
     return result
 
 

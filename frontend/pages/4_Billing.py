@@ -7,7 +7,10 @@ require_role("Admin", "Desk")
 
 st.title("Billing")
 
-jobs = api.get_fast("/api/jobcards") or []
+# /api/jobcards returns a paginated envelope: {"items": [...], "total": N, ...}.
+# Pull a large page so all billable jobs are available, then read .items.
+jobs_payload = api.get_fast("/api/jobcards", params={"page": 1, "page_size": 200}) or {}
+jobs = jobs_payload.get("items", []) if isinstance(jobs_payload, dict) else jobs_payload
 billable = [j for j in jobs if j["status"] in ("Ready_For_Billing", "Completed")]
 
 if not billable:

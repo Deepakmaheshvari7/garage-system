@@ -202,22 +202,50 @@ st.divider()
 # --- Inventory grid ---
 st.subheader("Current Inventory")
 
+def _reset_inventory_page():
+    st.session_state["inventory_page"] = 1
+
+
+if "inventory_page_size" not in st.session_state:
+    st.session_state["inventory_page_size"] = 25
+
+PAGE_SIZE = st.session_state["inventory_page_size"]
+page = st.session_state.get("inventory_page", 1)
+
 # Low-stock filter. Turned on automatically when arriving from the
 # Dashboard's "View Low Stock Items" button (which sets the session flag),
 # and can also be toggled manually here.
 default_low = st.session_state.pop("show_low_stock", False)
-fcol1, fcol2 = st.columns([3, 1])
-search = fcol1.text_input("Search by name or category", "",
-                          label_visibility="collapsed",
-                          placeholder="🔍 Search by name, category, brand...")
-low_only = fcol2.checkbox("Low stock only", value=default_low)
+if default_low:
+    st.session_state["inventory_low_only"] = True
+fcol1, fcol2, fcol3, fcol4 = st.columns([3, 1, 1, 1])
+search = fcol1.text_input(
+    "Search inventory", "", key="inventory_search",
+    label_visibility="collapsed",
+    placeholder="🔍 Search name, part number, category, brand...",
+    on_change=_reset_inventory_page,
+)
+low_only = fcol2.checkbox(
+    "Low stock only", value=default_low, key="inventory_low_only",
+    on_change=_reset_inventory_page,
+)
+fcol3.selectbox(
+    "Page size", [10, 25, 50, 100], key="inventory_page_size",
+    on_change=_reset_inventory_page,
+)
+if fcol4.button("Refresh", use_container_width=True):
+    api.invalidate_cache(); st.rerun()
 
 # Cached — inventory list is expensive on large catalogs and doesn't change
 # every second. Cache is auto-invalidated after any add/edit/import.
-items = api.get_fast("/api/inventory")
+list_params = {"page": page, "page_size": PAGE_SIZE, "low_stock_only": low_only}
+if search.strip():
+    list_params["search"] = search.strip()
+response = api.get_fast("/api/inventory", params=list_params)
+items_data = response.get("items", []) if isinstance(response, dict) else response or []
 
-if items:
-    df = pd.DataFrame(items)
+if items_data:
+    df = pd.DataFrame(items_data)
 
     # Reorder columns for a cleaner display
     admin_cols = ["part_id", "part_number", "name", "category", "brand", "bike_model",
@@ -228,20 +256,20 @@ if items:
     display_cols = [c for c in ordered if c in df.columns]
     df = df[display_cols]
 
-    # Apply the low-stock filter first so search narrows within it
-    if low_only and "is_low_stock" in df.columns:
-        df = df[df["is_low_stock"] == True]
-        st.caption(f"Showing {len(df)} low-stock item(s).")
+    if isinstance(response, dict):
+        total_pages = response.get("total_pages", 1)
+        total_items = response.get("total", 0)
+        qualifier = " low-stock" if low_only else ""
+        st.caption(f"Page {page} of {total_pages} — {total_items}{qualifier} item(s)")
 
-    if search:
-        mask = (
-            df["name"].str.contains(search, case=False, na=False)
-            | df["category"].fillna("").str.contains(search, case=False, na=False)
-            | df["brand"].fillna("").str.contains(search, case=False, na=False)
-            | df["bike_model"].fillna("").str.contains(search, case=False, na=False)
-            | df["part_number"].fillna("").str.contains(search, case=False, na=False)
-        )
-        df = df[mask]
+        nav_cols = st.columns([1, 1, 1])
+        if nav_cols[0].button("← Previous", disabled=page <= 1):
+            st.session_state["inventory_page"] = max(1, page - 1)
+            st.rerun()
+        if nav_cols[1].button("Next →", disabled=page >= total_pages):
+            st.session_state["inventory_page"] = min(total_pages, page + 1)
+            st.rerun()
+        nav_cols[2].empty()
 
     if is_admin:
         st.caption("Admins can edit prices and thresholds inline below, then click Save changes.")
@@ -254,7 +282,7 @@ if items:
         )
         if st.button("💾 Save changes"):
             changes = 0
-            original_by_id = {row["part_id"]: row for row in items}
+            original_by_id = {row["part_id"]: row for row in items_data}
             for _, row in edited_df.iterrows():
                 original = original_by_id.get(row["part_id"])
                 if not original:
@@ -281,4 +309,7 @@ if items:
     else:
         st.dataframe(df, use_container_width=True, hide_index=True)
 else:
-    st.info("No inventory items yet. Add one above or import a supplier catalog.")
+    if isinstance(response, dict):
+        st.info("No inventory items match the current search or filter.")
+    else:
+        st.info("No inventory items yet. Add one above or import a supplier catalog.")

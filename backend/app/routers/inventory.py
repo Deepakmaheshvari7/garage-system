@@ -1,7 +1,8 @@
 import io
 
 import pandas as pd
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -78,6 +79,15 @@ def _normalize_part_number(value):
     return cleaned or None
 
 
+def _trim_inventory_list(item: InventoryItem, role: RoleEnum):
+    payload = _serialize(item, role).model_dump()
+    allowed = [
+        "part_id", "part_number", "name", "category", "brand", "bike_model",
+        "stock_quantity", "min_threshold", "cost_price", "selling_price", "is_low_stock",
+    ]
+    return {k: payload.get(k) for k in allowed if k in payload}
+
+
 def _find_by_part_number(db: Session, part_number: str):
     return db.query(InventoryItem).filter(
         InventoryItem.part_number == part_number
@@ -105,9 +115,39 @@ def get_by_part_number(
 def list_inventory(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    search: str | None = Query(None, max_length=100),
+    in_stock_only: bool = False,
+    low_stock_only: bool = False,
 ):
-    items = db.query(InventoryItem).order_by(InventoryItem.name).all()
-    return [_serialize(item, current_user.role) for item in items]
+    query = db.query(InventoryItem).order_by(InventoryItem.name)
+    search_term = (search or "").strip()
+    if search_term:
+        pattern = f"%{search_term}%"
+        query = query.filter(or_(
+            InventoryItem.name.ilike(pattern),
+            InventoryItem.part_number.ilike(pattern),
+            InventoryItem.category.ilike(pattern),
+            InventoryItem.brand.ilike(pattern),
+            InventoryItem.bike_model.ilike(pattern),
+        ))
+    if in_stock_only:
+        query = query.filter(InventoryItem.stock_quantity > 0)
+    if low_stock_only:
+        query = query.filter(InventoryItem.stock_quantity <= InventoryItem.min_threshold)
+    total = query.count()
+    offset = (page - 1) * page_size
+    items = query.offset(offset).limit(page_size).all()
+    total_pages = (total + page_size - 1) // page_size if total else 1
+
+    return {
+        "items": [_trim_inventory_list(item, current_user.role) for item in items],
+        "page": page,
+        "page_size": page_size,
+        "total": total,
+        "total_pages": total_pages,
+    }
 
 
 @router.get("/low-stock")
@@ -115,10 +155,18 @@ def low_stock_items(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    items = db.query(InventoryItem).filter(
-        InventoryItem.stock_quantity <= InventoryItem.min_threshold
-    ).all()
-    return [_serialize(item, current_user.role) for item in items]
+    from app.core.cache import get_or_set_cache
+
+    key = f"low-stock:{current_user.role.value}"
+    items = get_or_set_cache(
+        key,
+        ttl_seconds=15,
+        factory=lambda: db.query(InventoryItem)
+            .filter(InventoryItem.stock_quantity <= InventoryItem.min_threshold)
+            .order_by(InventoryItem.name)
+            .all(),
+    )
+    return [_trim_inventory_list(item, current_user.role) for item in items]
 
 
 @router.post("", response_model=InventoryItemOut, status_code=201)

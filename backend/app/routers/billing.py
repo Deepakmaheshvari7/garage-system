@@ -77,7 +77,7 @@ def _p(text, size=9, color=colors.black, font="Helvetica",
 
 
 # ── Invoice data calculation ──────────────────────────────────────────────────
-def _calculate(job: JobCard) -> dict:
+def _calculate(job: JobCard, amount_paid: float | None = None) -> dict:
     parts_lines, parts_subtotal = [], 0.0
     for jp in job.parts_used:
         lt = round(jp.quantity_used * jp.part.selling_price, 2)
@@ -89,6 +89,15 @@ def _calculate(job: JobCard) -> dict:
             "line_total": lt,
         })
     grand_total = round(parts_subtotal + job.labor_charge, 2)
+    
+    # Calculate discount based on amount_paid (only positive discounts)
+    discount = 0.0
+    discount_percent = 0.0
+    if amount_paid is not None and amount_paid > 0:
+        discount = max(0.0, round(grand_total - amount_paid, 2))
+        if grand_total > 0:
+            discount_percent = round((discount / grand_total) * 100, 2)
+    
     return {
         "job_id":         job.job_id,
         "invoice_date":   date.today().strftime("%d/%m/%Y"),
@@ -100,6 +109,9 @@ def _calculate(job: JobCard) -> dict:
         "labor_charge":   job.labor_charge,
         "parts_subtotal": parts_subtotal,
         "grand_total":    grand_total,
+        "amount_paid":    amount_paid,
+        "discount":       discount,
+        "discount_percent": discount_percent,
     }
 
 
@@ -252,11 +264,25 @@ def _build_pdf(d: dict) -> bytes:
         _p(""), _p(""),
         _p(f"Rs. {d['grand_total']:.2f}", 10, colors.black, "Helvetica-Bold", TA_RIGHT),
     ])
+    
+    # Discount row (only if discount exists)
+    if d.get("discount", 0) > 0:
+        discount_label = f"Discount ({d['discount_percent']:.0f}%)"
+        rows.append([
+            _p(""),
+            _p(discount_label, 9, colors.HexColor("#d9534f"), "Helvetica-Bold"),
+            _p(""), _p(""),
+            _p(f"−Rs. {d['discount']:.2f}", 9, colors.HexColor("#d9534f"), "Helvetica-Bold", TA_RIGHT),
+        ])
 
     n = len(rows)
-    grand_idx = n - 1
+    grand_idx = n - 2 if d.get("discount", 0) > 0 else n - 1
+    discount_idx = n - 1 if d.get("discount", 0) > 0 else None
+    
     items = Table(rows, colWidths=cw, repeatRows=1)
-    items.setStyle(TableStyle([
+    
+    # Build table styling with discount row
+    style_list = [
         ("BACKGROUND",    (0,0),(-1,0),                DARK_BLUE),
         ("ROWBACKGROUNDS",(0,1),(-1,grand_idx-1),      [WHITE, LIGHT_GREY]),
         ("GRID",          (0,0),(-1,grand_idx-1),      0.3, BORDER),
@@ -268,7 +294,16 @@ def _build_pdf(d: dict) -> bytes:
         ("LEFTPADDING",   (0,0),(-1,-1), 5),
         ("RIGHTPADDING",  (0,0),(-1,-1), 5),
         ("VALIGN",        (0,0),(-1,-1), "MIDDLE"),
-    ]))
+    ]
+    
+    # Add discount row styling if discount exists
+    if discount_idx is not None:
+        style_list.extend([
+            ("BACKGROUND",    (0,discount_idx),(-1,discount_idx), colors.HexColor("#fff5f5")),
+            ("SPAN",          (1,discount_idx),(3,discount_idx)),
+        ])
+    
+    items.setStyle(TableStyle(style_list))
     story.append(items)
     story.append(Spacer(1, 10*mm))
 
@@ -307,6 +342,7 @@ def _build_pdf(d: dict) -> bytes:
 @router.get("/jobcards/{job_id}/preview")
 def preview_invoice_data(
     job_id: int, db: Session = Depends(get_db),
+    amount_paid: float | None = None,
     _s: User = Depends(require_role(RoleEnum.ADMIN, RoleEnum.DESK)),
 ):
     job = db.query(JobCard).filter(JobCard.job_id == job_id).first()
@@ -318,12 +354,15 @@ def preview_invoice_data(
             f"Invoice preview is limited to {MAX_INVOICE_LINE_ITEMS} line items. "
             "This job is too large to generate in the browser.",
         )
-    d = _calculate(job)
+    d = _calculate(job, amount_paid)
     return {
         **d,
         "labor_charge":   str(d["labor_charge"]),
         "parts_subtotal": str(d["parts_subtotal"]),
         "grand_total":    str(d["grand_total"]),
+        "discount":       str(d["discount"]),
+        "discount_percent": str(d["discount_percent"]),
+        "amount_paid":    str(d["amount_paid"]) if d["amount_paid"] is not None else None,
         "parts": [{**p, "unit_price": str(p["unit_price"]),
                         "line_total": str(p["line_total"])} for p in d["parts"]],
     }
@@ -332,6 +371,7 @@ def preview_invoice_data(
 @router.get("/jobcards/{job_id}/invoice")
 def generate_invoice(
     job_id: int, db: Session = Depends(get_db),
+    amount_paid: float | None = None,
     _s: User = Depends(require_role(RoleEnum.ADMIN, RoleEnum.DESK)),
 ):
     job = db.query(JobCard).filter(JobCard.job_id == job_id).first()
@@ -348,7 +388,7 @@ def generate_invoice(
             "This job is too large to render as a PDF in the web app.",
         )
 
-    d = _calculate(job)
+    d = _calculate(job, amount_paid)
     if d["grand_total"] > MAX_INVOICE_GRAND_TOTAL:
         raise HTTPException(
             413,
@@ -357,9 +397,13 @@ def generate_invoice(
 
     pdf_bytes = _build_pdf(d)
 
+    # Save amount_paid to job for historical record
+    if amount_paid is not None and amount_paid > 0:
+        job.amount_paid = amount_paid
+    
     if job.status == JobStatusEnum.READY_FOR_BILLING:
         job.status = JobStatusEnum.COMPLETED
-        db.commit()
+    db.commit()
 
     return StreamingResponse(
         io.BytesIO(pdf_bytes), media_type="application/pdf",

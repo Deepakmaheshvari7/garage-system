@@ -23,6 +23,9 @@ class JobCard(Base):
 
     # Labour charge entered manually by desk — no hourly calculation
     labor_charge  = Column(Float, default=0.0, nullable=False)
+    
+    # Amount customer actually pays (for discount calculation during billing)
+    amount_paid   = Column(Float, nullable=True)
 
     created_at    = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     updated_at    = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), index=True)

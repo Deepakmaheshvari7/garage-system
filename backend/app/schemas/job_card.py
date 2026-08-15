@@ -17,6 +17,7 @@ class JobCardUpdate(BaseModel):
     vehicle_reg:    Optional[str] = None
     mechanic_id:    Optional[int] = None
     labor_charge:   Optional[float] = None
+    amount_paid:    Optional[float] = None
 
 
 class JobCardStatusUpdate(BaseModel):
@@ -56,6 +57,7 @@ class JobCardOut(BaseModel):
     mechanic_name:  Optional[str] = None
     status:         JobStatusEnum
     labor_charge:   float
+    amount_paid:    Optional[float] = None
     parts_used:     list[JobPartOut] = []
     parts_total:    float = 0.0
     grand_total:    float = 0.0

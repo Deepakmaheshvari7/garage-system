@@ -40,11 +40,8 @@ app.include_router(users.router)
 
 @app.on_event("startup")
 def on_startup():
-    # create_all is convenient for getting started, but for real schema
-    # evolution over time you should migrate to Alembic migrations.
     Base.metadata.create_all(bind=engine)
-    if settings.ENV == "production" or __import__("os").getenv("RUN_DB_MIGRATIONS", "").lower() in {"1", "true", "yes"}:
-        run_database_migrations()
+    run_database_migrations()
 
 
 @app.get("/")

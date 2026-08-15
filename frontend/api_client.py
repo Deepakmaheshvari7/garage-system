@@ -1,78 +1,55 @@
 """
 Thin wrapper around the FastAPI backend, used by all Streamlit pages.
 Handles auth headers, consistent error display, refresh token rotation,
-browser localStorage session persistence, and response caching.
+native URL query params session persistence, and response caching.
 """
-import json
 import os
 import time
 from typing import Callable, Optional
 
 import requests
 import streamlit as st
-import streamlit.components.v1 as components
 from dotenv import load_dotenv
 
 load_dotenv()
 
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
 
-_STORAGE_KEY = "spm_auth_session"
-_COMPONENT_PATH = os.path.join(os.path.dirname(__file__), "components", "local_storage")
-_storage_tracker = components.declare_component("local_storage_tracker", path=_COMPONENT_PATH)
-
 # Default time-to-live (seconds) for cached GETs.
 _CACHE_TTL = 30
 _fast_cache: dict[tuple[str, str, str], tuple[float, object]] = {}
 
 
-def sync_browser_storage(action: str, value: dict | None = None) -> dict | None:
-    """Read, write, or delete session storage in the browser via custom component."""
-    try:
-        res = _storage_tracker(
-            action=action,
-            storage_key=_STORAGE_KEY,
-            value=value,
-            default=None,
-            key=f"spm_ls_{action}",
-        )
-        if isinstance(res, str):
-            try:
-                return json.loads(res)
-            except Exception:
-                return None
-        return res
-    except Exception:
-        return None
-
-
 def init_session() -> bool:
     """
-    Synchronizes browser localStorage with st.session_state.
-    Call this at the top of main.py.
+    Restores session from st.query_params if st.session_state is empty.
+    Uses the secure refresh_token to obtain a valid access token.
     """
-    if st.session_state.get("_delete_storage_pending"):
-        sync_browser_storage(action="delete")
-        st.session_state.pop("_delete_storage_pending", None)
-        return False
-
-    if "_save_storage_pending" in st.session_state:
-        creds = st.session_state.pop("_save_storage_pending")
-        sync_browser_storage(action="set", value=creds)
-        return True
-
     if is_authenticated():
         return True
 
-    saved = sync_browser_storage(action="get")
-    if saved and isinstance(saved, dict) and "access_token" in saved:
-        st.session_state["access_token"] = saved.get("access_token")
-        st.session_state["refresh_token"] = saved.get("refresh_token")
-        st.session_state["role"] = saved.get("role")
-        st.session_state["username"] = saved.get("username")
-        st.session_state["user_id"] = saved.get("user_id")
-        st.rerun()
-        return True
+    # Check if a refresh token was persisted in st.query_params
+    refresh_token = st.query_params.get("auth")
+    if refresh_token:
+        try:
+            resp = requests.post(
+                f"{API_BASE_URL}/api/auth/refresh",
+                json={"refresh_token": refresh_token},
+                timeout=10,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                st.session_state["access_token"] = data["access_token"]
+                st.session_state["refresh_token"] = data.get("refresh_token") or refresh_token
+                st.session_state["role"] = data["role"]
+                st.session_state["username"] = data["username"]
+                st.session_state["user_id"] = data["user_id"]
+                return True
+            else:
+                # Token expired or invalid, clear query params
+                st.query_params.clear()
+        except requests.exceptions.RequestException:
+            pass
 
     return False
 
@@ -93,7 +70,7 @@ def _headers() -> dict:
 
 def refresh_access_token() -> bool:
     """Attempt to obtain a new access token using the stored refresh token."""
-    refresh_token = st.session_state.get("refresh_token")
+    refresh_token = st.session_state.get("refresh_token") or st.query_params.get("auth")
     if not refresh_token:
         return False
     try:
@@ -110,16 +87,7 @@ def refresh_access_token() -> bool:
             st.session_state["user_id"] = data["user_id"]
             if data.get("refresh_token"):
                 st.session_state["refresh_token"] = data["refresh_token"]
-            
-            # Keep storage synchronized with refreshed credentials
-            session_data = {
-                "access_token": data["access_token"],
-                "refresh_token": st.session_state.get("refresh_token"),
-                "role": data["role"],
-                "username": data["username"],
-                "user_id": data["user_id"],
-            }
-            st.session_state["_save_storage_pending"] = session_data
+                st.query_params["auth"] = data["refresh_token"]
             return True
     except requests.exceptions.RequestException:
         pass
@@ -145,14 +113,9 @@ def login(username: str, password: str) -> bool:
         st.session_state["username"] = data["username"]
         st.session_state["user_id"] = data["user_id"]
 
-        # Queue storage write
-        st.session_state["_save_storage_pending"] = {
-            "access_token": data["access_token"],
-            "refresh_token": data.get("refresh_token"),
-            "role": data["role"],
-            "username": data["username"],
-            "user_id": data["user_id"],
-        }
+        # Persist session refresh token in query params for seamless reload
+        if data.get("refresh_token"):
+            st.query_params["auth"] = data["refresh_token"]
         return True
 
     st.error(resp.json().get("detail", "Login failed"))
@@ -162,10 +125,9 @@ def login(username: str, password: str) -> bool:
 def logout():
     for key in ("access_token", "refresh_token", "role", "username", "user_id"):
         st.session_state.pop(key, None)
-    # Clear cache
+    # Clear cache and URL query params
     _fast_cache.clear()
-    # Queue storage delete
-    st.session_state["_delete_storage_pending"] = True
+    st.query_params.clear()
 
 
 def is_authenticated() -> bool:
@@ -177,8 +139,11 @@ def _handle(resp: requests.Response, retry_fn: Optional[Callable[[], requests.Re
         # Attempt auto-refresh using refresh_token if available
         if refresh_access_token():
             if retry_fn:
-                new_resp = retry_fn()
-                return _handle(new_resp, retry_fn=None)
+                try:
+                    new_resp = retry_fn()
+                    return _handle(new_resp, retry_fn=None)
+                except requests.exceptions.RequestException:
+                    pass
             st.rerun()
             return None
         st.warning("Your session has expired. Please log in again.")
@@ -202,7 +167,12 @@ def get(path: str, params: dict | None = None):
         return requests.get(
             f"{API_BASE_URL}{path}", headers=_headers(), params=params, timeout=15
         )
-    return _handle(_do(), retry_fn=_do)
+    try:
+        resp = _do()
+        return _handle(resp, retry_fn=_do)
+    except requests.exceptions.RequestException as exc:
+        st.error(f"Could not reach the server: {exc}")
+        return None
 
 
 def get_fast(path: str, params: dict | None = None):
@@ -226,18 +196,34 @@ def get_fast(path: str, params: dict | None = None):
         return requests.get(
             f"{API_BASE_URL}{path}", headers=_headers(), params=params, timeout=15
         )
-    resp = _do()
+
+    try:
+        resp = _do()
+    except requests.exceptions.RequestException as exc:
+        st.error(f"Could not reach the server: {exc}")
+        return None
+
     if resp.status_code == 401:
         if refresh_access_token():
-            resp = _do()
+            try:
+                resp = _do()
+            except requests.exceptions.RequestException:
+                return None
         else:
             _fast_cache[key] = (now, None)
             _handle(resp)
             return None
+
     if resp.status_code >= 400:
         _fast_cache[key] = (now, None)
+        _handle(resp)
         return None
-    value = resp.json()
+
+    try:
+        value = resp.json()
+    except Exception:
+        value = None
+
     _fast_cache[key] = (now, value)
     return value
 
@@ -283,10 +269,15 @@ def post(path: str, json: dict | None = None, files=None, data=None):
             data=data,
             timeout=30,
         )
-    result = _handle(_do(), retry_fn=_do)
-    if result is not None:
-        _invalidate_after_write(path)
-    return result
+    try:
+        resp = _do()
+        result = _handle(resp, retry_fn=_do)
+        if result is not None:
+            _invalidate_after_write(path)
+        return result
+    except requests.exceptions.RequestException as exc:
+        st.error(f"Could not reach the server: {exc}")
+        return None
 
 
 def patch(path: str, json: dict | None = None):
@@ -294,19 +285,29 @@ def patch(path: str, json: dict | None = None):
         return requests.patch(
             f"{API_BASE_URL}{path}", headers=_headers(), json=json, timeout=15
         )
-    result = _handle(_do(), retry_fn=_do)
-    if result is not None:
-        _invalidate_after_write(path)
-    return result
+    try:
+        resp = _do()
+        result = _handle(resp, retry_fn=_do)
+        if result is not None:
+            _invalidate_after_write(path)
+        return result
+    except requests.exceptions.RequestException as exc:
+        st.error(f"Could not reach the server: {exc}")
+        return None
 
 
 def delete(path: str):
     def _do():
         return requests.delete(f"{API_BASE_URL}{path}", headers=_headers(), timeout=15)
-    result = _handle(_do(), retry_fn=_do)
-    if result is not None:
-        _invalidate_after_write(path)
-    return result
+    try:
+        resp = _do()
+        result = _handle(resp, retry_fn=_do)
+        if result is not None:
+            _invalidate_after_write(path)
+        return result
+    except requests.exceptions.RequestException as exc:
+        st.error(f"Could not reach the server: {exc}")
+        return None
 
 
 def get_raw(path: str, params: dict | None = None):
@@ -315,10 +316,14 @@ def get_raw(path: str, params: dict | None = None):
         return requests.get(
             f"{API_BASE_URL}{path}", headers=_headers(), params=params, timeout=30
         )
-    resp = _do()
-    if resp.status_code == 401 and refresh_access_token():
+    try:
         resp = _do()
-    return resp
+        if resp.status_code == 401 and refresh_access_token():
+            resp = _do()
+        return resp
+    except requests.exceptions.RequestException as exc:
+        st.error(f"Could not reach the server: {exc}")
+        return None
 
 
 def get_quiet(path: str):
@@ -331,10 +336,10 @@ def get_quiet(path: str):
             resp = requests.get(
                 f"{API_BASE_URL}{path}", headers=_headers(), timeout=10
             )
+        try:
+            body = resp.json()
+        except Exception:
+            body = None
+        return resp.status_code, body
     except requests.exceptions.RequestException:
         return None, None
-    try:
-        body = resp.json()
-    except Exception:
-        body = None
-    return resp.status_code, body

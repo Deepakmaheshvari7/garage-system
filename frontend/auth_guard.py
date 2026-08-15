@@ -8,6 +8,7 @@ import api_client as api
 
 
 def require_login():
+    api.init_session()
     if not api.is_authenticated():
         st.error("Please log in to continue.")
         st.stop()

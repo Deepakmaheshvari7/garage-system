@@ -25,7 +25,7 @@ def init_session() -> bool:
     Restores session from st.query_params if st.session_state is empty.
     Uses the secure refresh_token to obtain a valid access token.
     """
-    if is_authenticated():
+    if "access_token" in st.session_state:
         return True
 
     # Check if a refresh token was persisted in st.query_params
@@ -131,7 +131,9 @@ def logout():
 
 
 def is_authenticated() -> bool:
-    return "access_token" in st.session_state
+    if "access_token" in st.session_state:
+        return True
+    return init_session()
 
 
 def _handle(resp: requests.Response, retry_fn: Optional[Callable[[], requests.Response]] = None):

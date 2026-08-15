@@ -1,7 +1,7 @@
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import select, cast, String, or_
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, selectinload
 
@@ -120,8 +120,12 @@ def list_job_cards(db: Session = Depends(get_db),
     if search is not None and search.strip():
         search_term = f"%{search.strip()}%"
         query = query.filter(
-            db.func.cast(JobCard.job_id, db.String).ilike(search_term) |
-            JobCard.customer_name.ilike(search_term)
+            or_(
+                cast(JobCard.job_id, String).ilike(search_term),
+                JobCard.customer_name.ilike(search_term),
+                JobCard.vehicle_reg.ilike(search_term),
+                JobCard.customer_phone.ilike(search_term),
+            )
         )
     total = query.count()
     offset = (page - 1) * page_size

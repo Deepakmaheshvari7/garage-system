@@ -28,6 +28,7 @@ def run_database_migrations() -> list[str]:
         _index_sql("inventory", "ix_inventory_brand", "brand"),
         _index_sql("inventory", "ix_inventory_bike_model", "bike_model"),
         _index_sql("job_cards", "ix_job_cards_status", "status"),
+        _index_sql("job_cards", "ix_job_cards_created_at", "created_at"),
         _index_sql("job_cards", "ix_job_cards_updated_at", "updated_at"),
         _index_sql("job_cards", "ix_job_cards_mechanic_id", "mechanic_id"),
         _index_sql("job_parts", "ix_job_parts_job_id", "job_id"),

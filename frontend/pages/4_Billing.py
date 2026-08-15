@@ -82,9 +82,30 @@ if labor > 0:
 
 st.divider()
 
+# Amount Paid & Discount Calculation
+st.markdown("**Payment Details**")
+amt_cols = st.columns([1, 1])
+with amt_cols[0]:
+    amount_paid = st.number_input(
+        "Amount Customer Pays (₹)",
+        min_value=0.0,
+        value=float(preview.get("grand_total", 0)),
+        step=10.0,
+        help="Enter the actual amount customer will pay"
+    )
+
+with amt_cols[1]:
+    grand_total = float(preview['grand_total'])
+    discount = max(0.0, grand_total - amount_paid)
+    discount_percent = (discount / grand_total * 100) if grand_total > 0 else 0
+    
+    st.metric("Discount", f"₹{discount:.0f}", f"{discount_percent:.1f}%")
+
+st.divider()
+
 if st.button("Generate PDF Invoice", type="primary", use_container_width=True):
     with st.spinner("Generating invoice..."):
-        resp = api.get_raw(f"/api/billing/jobcards/{job['job_id']}/invoice")
+        resp = api.get_raw(f"/api/billing/jobcards/{job['job_id']}/invoice", params={"amount_paid": amount_paid})
     if resp.status_code == 200:
         api.invalidate_cache()
         st.download_button(

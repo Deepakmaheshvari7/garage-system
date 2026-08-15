@@ -19,11 +19,21 @@ with left:
         key="jobcards_status_filter",
         on_change=_reset_job_page,
     )
+    
+    search_query = st.text_input(
+        "Search by Job # or Customer Name",
+        placeholder="e.g., 123 or John Doe",
+        key="jobcards_search",
+        on_change=_reset_job_page,
+    ).strip()
+    
     page = st.session_state.get("jobcards_page", 1)
-    page_size = st.session_state.get("jobcards_page_size", 25)
+    page_size = 5
     list_params = {"page": page, "page_size": page_size}
     if status_filter != "All":
         list_params["status"] = status_filter
+    if search_query:
+        list_params["search"] = search_query
     jobs_payload = api.get_fast("/api/jobcards", params=list_params) or {}
     jobs = jobs_payload.get("items", []) if isinstance(jobs_payload, dict) else jobs_payload or []
 
@@ -127,6 +137,54 @@ with right:
     st.divider()
 
     if not is_done:
+        with st.expander("Edit Job Details"):
+            mechanics = api.get("/api/users", params={"role": "Mechanic"}) or []
+            mech_opts = {"— Unassigned —": None}
+            mech_opts.update({
+                f"{m['username']} (#{m['user_id']})": m["user_id"]
+                for m in mechanics
+            })
+            current_mech_label = next(
+                (label for label, mechanic_id in mech_opts.items()
+                 if mechanic_id == job.get("mechanic_id")),
+                "— Unassigned —",
+            )
+
+            with st.form(f"edit_job_{job['job_id']}"):
+                e1, e2 = st.columns(2)
+                edit_name = e1.text_input("Customer Name", value=job.get("customer_name") or "")
+                edit_phone = e2.text_input("Phone Number", value=job.get("customer_phone") or "")
+                edit_reg = st.text_input(
+                    "Vehicle Reg. No. *", value=job["vehicle_reg"],
+                )
+                e3, e4 = st.columns(2)
+                edit_mech_label = e3.selectbox(
+                    "Assign Mechanic", list(mech_opts.keys()),
+                    index=list(mech_opts.keys()).index(current_mech_label),
+                )
+                edit_labor = e4.number_input(
+                    "Labour Charge (₹)", min_value=0.0,
+                    value=float(job["labor_charge"]), step=50.0,
+                )
+                save_details = st.form_submit_button(
+                    "Save Job Details", type="primary", use_container_width=True,
+                )
+
+            if save_details:
+                if not edit_reg.strip():
+                    st.warning("Vehicle Reg. is required.")
+                else:
+                    result = api.patch(f"/api/jobcards/{job['job_id']}", json={
+                        "customer_name": edit_name.strip() or None,
+                        "customer_phone": edit_phone.strip() or None,
+                        "vehicle_reg": edit_reg.strip().upper(),
+                        "mechanic_id": mech_opts[edit_mech_label],
+                        "labor_charge": float(edit_labor),
+                    })
+                    if result:
+                        st.success("Job details updated.")
+                        st.rerun()
+
         # ── Add Part (server-side catalog search) ───────────────────────────
         st.markdown("**Add Part**")
         part_search = st.text_input(
@@ -195,22 +253,6 @@ with right:
                     st.rerun()
         elif len(part_search) >= 2:
             st.info("No in-stock parts match that search.")
-
-        # Labour charge
-        st.markdown("**Labour Charge**")
-        l1, l2 = st.columns([2, 1])
-        new_charge = l1.number_input(
-            "Labour (₹)", min_value=0.0,
-            value=float(job["labor_charge"]),
-            step=50.0, format="%.0f",
-            label_visibility="collapsed",
-            help="Enter the total labour charge for this job"
-        )
-        if l2.button("Update", use_container_width=True):
-            if api.patch(f"/api/jobcards/{job['job_id']}/labor",
-                         json={"labor_charge": new_charge}):
-                st.success("Labour charge updated.")
-                st.rerun()
 
         st.divider()
 

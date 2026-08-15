@@ -84,22 +84,45 @@ def _load_detail(db: Session, job_id: int) -> JobCard:
     return _detail_query(db).filter(JobCard.job_id == job_id).one()
 
 
+def _validate_mechanic_id(db: Session, mechanic_id: int | None):
+    if mechanic_id is None:
+        return
+    mechanic = db.query(User).filter(
+        User.user_id == mechanic_id,
+        User.role == RoleEnum.MECHANIC,
+    ).first()
+    if not mechanic:
+        raise HTTPException(
+            400,
+            "Selected mechanic no longer exists. Refresh the page and try again.",
+        )
+
+
 @router.get("")
 def list_job_cards(db: Session = Depends(get_db),
                    _u: User = Depends(get_current_user),
                    page: int = Query(1, ge=1),
-                   page_size: int = Query(25, ge=1, le=200),
-                   status: JobStatusEnum | None = None):
+                   page_size: int = Query(5, ge=1, le=200),
+                   status: JobStatusEnum | None = None,
+                   search: str | None = None):
     query = (
         db.query(JobCard)
         .options(
             selectinload(JobCard.mechanic),
             selectinload(JobCard.parts_used).selectinload(JobPart.part),
         )
-        .order_by(JobCard.job_id.desc())
+        # Creation time is the primary order; job_id makes equal timestamps
+        # deterministic and keeps the newest card at the top of the page.
+        .order_by(JobCard.created_at.desc().nullslast(), JobCard.job_id.desc())
     )
     if status is not None:
         query = query.filter(JobCard.status == status)
+    if search is not None and search.strip():
+        search_term = f"%{search.strip()}%"
+        query = query.filter(
+            db.func.cast(JobCard.job_id, db.String).ilike(search_term) |
+            JobCard.customer_name.ilike(search_term)
+        )
     total = query.count()
     offset = (page - 1) * page_size
     jobs = query.offset(offset).limit(page_size).all()
@@ -134,14 +157,7 @@ def create_job_card(payload: JobCardCreate, db: Session = Depends(get_db),
 
     # Validate the mechanic inside the SAME transaction that inserts the job,
     # so a mechanic deleted between page-load and submit can't slip through.
-    if payload.mechanic_id:
-        mechanic = db.query(User).filter(User.user_id == payload.mechanic_id,
-                                         User.role == RoleEnum.MECHANIC).first()
-        if not mechanic:
-            raise HTTPException(
-                400,
-                "Selected mechanic no longer exists. Refresh the page and try again.",
-            )
+    _validate_mechanic_id(db, payload.mechanic_id)
 
     job = JobCard(**payload.model_dump())
     db.add(job)
@@ -173,9 +189,27 @@ def update_job_card(job_id: int, payload: JobCardUpdate,
     job = db.query(JobCard).filter(JobCard.job_id == job_id).first()
     if not job:
         raise HTTPException(404, "Job card not found")
-    for k, v in payload.model_dump(exclude_unset=True).items():
+    updates = payload.model_dump(exclude_unset=True)
+    if "vehicle_reg" in updates:
+        vehicle_reg = (updates["vehicle_reg"] or "").strip().upper()
+        if not vehicle_reg:
+            raise HTTPException(400, "vehicle_reg is required.")
+        updates["vehicle_reg"] = vehicle_reg
+    if "mechanic_id" in updates:
+        _validate_mechanic_id(db, updates["mechanic_id"])
+
+    for k, v in updates.items():
         setattr(job, k, v)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        logger.warning("Job card update IntegrityError: %s", exc.orig)
+        raise HTTPException(409, "Could not update the job card due to a database constraint.")
+    except SQLAlchemyError as exc:
+        db.rollback()
+        logger.exception("Job card update failed: %s", exc)
+        raise HTTPException(500, "Could not update the job card due to a database error.")
     return _out(_load_detail(db, job_id))
 
 

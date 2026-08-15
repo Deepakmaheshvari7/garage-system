@@ -194,6 +194,8 @@ def build_navigation():
 
 
 def main():
+    api.init_session()
+
     if not api.is_authenticated():
         render_login()
         return

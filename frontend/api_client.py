@@ -1,28 +1,80 @@
 """
 Thin wrapper around the FastAPI backend, used by all Streamlit pages.
-Handles auth headers, consistent error display, and response caching
-to avoid redundant API calls on every Streamlit rerun.
+Handles auth headers, consistent error display, refresh token rotation,
+browser localStorage session persistence, and response caching.
 """
-# v3 — scoped per-path cache so a single write doesn't refetch everything
+import json
 import os
 import time
+from typing import Callable, Optional
 
 import requests
 import streamlit as st
+import streamlit.components.v1 as components
 from dotenv import load_dotenv
 
 load_dotenv()
 
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
 
-# Default time-to-live (seconds) for cached GETs. Individual entries can be
-# refreshed early by calling invalidate_cache("/api/inventory") etc.
+_STORAGE_KEY = "spm_auth_session"
+_COMPONENT_PATH = os.path.join(os.path.dirname(__file__), "components", "local_storage")
+_storage_tracker = components.declare_component("local_storage_tracker", path=_COMPONENT_PATH)
+
+# Default time-to-live (seconds) for cached GETs.
 _CACHE_TTL = 30
-# In-process cache: {(token, path, params_key): (timestamp, json_or_None)}.
-# The token is deliberately part of the key: list responses are role-aware
-# (for example, Admin inventory includes cost_price), so sharing a cached
-# response across users would expose data they are not allowed to see.
 _fast_cache: dict[tuple[str, str, str], tuple[float, object]] = {}
+
+
+def sync_browser_storage(action: str, value: dict | None = None) -> dict | None:
+    """Read, write, or delete session storage in the browser via custom component."""
+    try:
+        res = _storage_tracker(
+            action=action,
+            storage_key=_STORAGE_KEY,
+            value=value,
+            default=None,
+            key=f"spm_ls_{action}",
+        )
+        if isinstance(res, str):
+            try:
+                return json.loads(res)
+            except Exception:
+                return None
+        return res
+    except Exception:
+        return None
+
+
+def init_session() -> bool:
+    """
+    Synchronizes browser localStorage with st.session_state.
+    Call this at the top of main.py.
+    """
+    if st.session_state.get("_delete_storage_pending"):
+        sync_browser_storage(action="delete")
+        st.session_state.pop("_delete_storage_pending", None)
+        return False
+
+    if "_save_storage_pending" in st.session_state:
+        creds = st.session_state.pop("_save_storage_pending")
+        sync_browser_storage(action="set", value=creds)
+        return True
+
+    if is_authenticated():
+        return True
+
+    saved = sync_browser_storage(action="get")
+    if saved and isinstance(saved, dict) and "access_token" in saved:
+        st.session_state["access_token"] = saved.get("access_token")
+        st.session_state["refresh_token"] = saved.get("refresh_token")
+        st.session_state["role"] = saved.get("role")
+        st.session_state["username"] = saved.get("username")
+        st.session_state["user_id"] = saved.get("user_id")
+        st.rerun()
+        return True
+
+    return False
 
 
 def _cache_key(path: str, params: dict | None) -> tuple[str, str, str]:
@@ -39,6 +91,41 @@ def _headers() -> dict:
     return {"Authorization": f"Bearer {token}"} if token else {}
 
 
+def refresh_access_token() -> bool:
+    """Attempt to obtain a new access token using the stored refresh token."""
+    refresh_token = st.session_state.get("refresh_token")
+    if not refresh_token:
+        return False
+    try:
+        resp = requests.post(
+            f"{API_BASE_URL}/api/auth/refresh",
+            json={"refresh_token": refresh_token},
+            timeout=10,
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            st.session_state["access_token"] = data["access_token"]
+            st.session_state["role"] = data["role"]
+            st.session_state["username"] = data["username"]
+            st.session_state["user_id"] = data["user_id"]
+            if data.get("refresh_token"):
+                st.session_state["refresh_token"] = data["refresh_token"]
+            
+            # Keep storage synchronized with refreshed credentials
+            session_data = {
+                "access_token": data["access_token"],
+                "refresh_token": st.session_state.get("refresh_token"),
+                "role": data["role"],
+                "username": data["username"],
+                "user_id": data["user_id"],
+            }
+            st.session_state["_save_storage_pending"] = session_data
+            return True
+    except requests.exceptions.RequestException:
+        pass
+    return False
+
+
 def login(username: str, password: str) -> bool:
     try:
         resp = requests.post(
@@ -53,9 +140,19 @@ def login(username: str, password: str) -> bool:
     if resp.status_code == 200:
         data = resp.json()
         st.session_state["access_token"] = data["access_token"]
+        st.session_state["refresh_token"] = data.get("refresh_token")
         st.session_state["role"] = data["role"]
         st.session_state["username"] = data["username"]
         st.session_state["user_id"] = data["user_id"]
+
+        # Queue storage write
+        st.session_state["_save_storage_pending"] = {
+            "access_token": data["access_token"],
+            "refresh_token": data.get("refresh_token"),
+            "role": data["role"],
+            "username": data["username"],
+            "user_id": data["user_id"],
+        }
         return True
 
     st.error(resp.json().get("detail", "Login failed"))
@@ -63,30 +160,49 @@ def login(username: str, password: str) -> bool:
 
 
 def logout():
-    for key in ("access_token", "role", "username", "user_id"):
+    for key in ("access_token", "refresh_token", "role", "username", "user_id"):
         st.session_state.pop(key, None)
-    # Clear all cached data on logout so the next user gets fresh data
+    # Clear cache
     _fast_cache.clear()
+    # Queue storage delete
+    st.session_state["_delete_storage_pending"] = True
 
 
 def is_authenticated() -> bool:
     return "access_token" in st.session_state
 
 
-# ---------------------------------------------------------------------------
-# Scoped in-process cache for read-heavy GETs.
-#
-# Unlike a global st.cache_data clear, invalidate_cache(*prefixes) only drops
-# entries whose path starts with one of the given prefixes — so adding a part
-# to a job (which changes job + inventory data) no longer refetches the
-# unrelated dashboard metrics too.
-# ---------------------------------------------------------------------------
+def _handle(resp: requests.Response, retry_fn: Optional[Callable[[], requests.Response]] = None):
+    if resp.status_code == 401:
+        # Attempt auto-refresh using refresh_token if available
+        if refresh_access_token():
+            if retry_fn:
+                new_resp = retry_fn()
+                return _handle(new_resp, retry_fn=None)
+            st.rerun()
+            return None
+        st.warning("Your session has expired. Please log in again.")
+        logout()
+        st.rerun()
+    if resp.status_code >= 400:
+        try:
+            detail = resp.json().get("detail", resp.text)
+        except Exception:
+            detail = resp.text
+        st.error(f"Error: {detail}")
+        return None
+    if resp.status_code == 204:
+        return True
+    return resp.json()
+
+
 def get(path: str, params: dict | None = None):
     """Uncached GET — use for data that must always be current."""
-    resp = requests.get(
-        f"{API_BASE_URL}{path}", headers=_headers(), params=params, timeout=15
-    )
-    return _handle(resp)
+    def _do():
+        return requests.get(
+            f"{API_BASE_URL}{path}", headers=_headers(), params=params, timeout=15
+        )
+    return _handle(_do(), retry_fn=_do)
 
 
 def get_fast(path: str, params: dict | None = None):
@@ -106,12 +222,19 @@ def get_fast(path: str, params: dict | None = None):
         if now - ts < _CACHE_TTL:
             return value
 
-    resp = requests.get(
-        f"{API_BASE_URL}{path}", headers=_headers(), params=params, timeout=15
-    )
+    def _do():
+        return requests.get(
+            f"{API_BASE_URL}{path}", headers=_headers(), params=params, timeout=15
+        )
+    resp = _do()
+    if resp.status_code == 401:
+        if refresh_access_token():
+            resp = _do()
+        else:
+            _fast_cache[key] = (now, None)
+            _handle(resp)
+            return None
     if resp.status_code >= 400:
-        # Cache misses/errors as None but still respect the TTL to avoid
-        # hammering the backend on repeated failures.
         _fast_cache[key] = (now, None)
         return None
     value = resp.json()
@@ -120,13 +243,7 @@ def get_fast(path: str, params: dict | None = None):
 
 
 def invalidate_cache(*prefixes: str):
-    """Drop cached GET entries so the next read is fresh.
-
-    With no arguments, clears the whole cache (backwards compatible).
-    With one or more path prefixes (e.g. "/api/inventory"), only entries
-    whose path starts with a prefix are dropped — keeping unrelated caches
-    warm so a single write doesn't force every page to refetch.
-    """
+    """Drop cached GET entries so the next read is fresh."""
     if not prefixes:
         _fast_cache.clear()
         return
@@ -136,11 +253,6 @@ def invalidate_cache(*prefixes: str):
 
 
 def _cache_prefixes_for_write(path: str) -> tuple[str, ...] | None:
-    """Return the cached resource groups affected by a successful write.
-
-    Keep unrelated pages warm after normal workbench actions. Returning None
-    is intentionally conservative for paths we do not know about yet.
-    """
     if path.startswith("/api/jobcards"):
         prefixes = ["/api/jobcards", "/api/dashboard"]
         if "/parts" in path:
@@ -162,33 +274,36 @@ def _invalidate_after_write(path: str):
 
 
 def post(path: str, json: dict | None = None, files=None, data=None):
-    resp = requests.post(
-        f"{API_BASE_URL}{path}",
-        headers=_headers(),
-        json=json,
-        files=files,
-        data=data,
-        timeout=30,
-    )
-    result = _handle(resp)
+    def _do():
+        return requests.post(
+            f"{API_BASE_URL}{path}",
+            headers=_headers(),
+            json=json,
+            files=files,
+            data=data,
+            timeout=30,
+        )
+    result = _handle(_do(), retry_fn=_do)
     if result is not None:
         _invalidate_after_write(path)
     return result
 
 
 def patch(path: str, json: dict | None = None):
-    resp = requests.patch(
-        f"{API_BASE_URL}{path}", headers=_headers(), json=json, timeout=15
-    )
-    result = _handle(resp)
+    def _do():
+        return requests.patch(
+            f"{API_BASE_URL}{path}", headers=_headers(), json=json, timeout=15
+        )
+    result = _handle(_do(), retry_fn=_do)
     if result is not None:
         _invalidate_after_write(path)
     return result
 
 
 def delete(path: str):
-    resp = requests.delete(f"{API_BASE_URL}{path}", headers=_headers(), timeout=15)
-    result = _handle(resp)
+    def _do():
+        return requests.delete(f"{API_BASE_URL}{path}", headers=_headers(), timeout=15)
+    result = _handle(_do(), retry_fn=_do)
     if result is not None:
         _invalidate_after_write(path)
     return result
@@ -196,18 +311,26 @@ def delete(path: str):
 
 def get_raw(path: str, params: dict | None = None):
     """For binary responses like PDF downloads. Returns the raw response object."""
-    return requests.get(
-        f"{API_BASE_URL}{path}", headers=_headers(), params=params, timeout=30
-    )
+    def _do():
+        return requests.get(
+            f"{API_BASE_URL}{path}", headers=_headers(), params=params, timeout=30
+        )
+    resp = _do()
+    if resp.status_code == 401 and refresh_access_token():
+        resp = _do()
+    return resp
 
 
 def get_quiet(path: str):
-    """GET that returns (status_code, json_body) without showing any error.
-    Used for lookups where 404 is an expected outcome, not a failure."""
+    """GET that returns (status_code, json_body) without showing any error."""
     try:
         resp = requests.get(
             f"{API_BASE_URL}{path}", headers=_headers(), timeout=10
         )
+        if resp.status_code == 401 and refresh_access_token():
+            resp = requests.get(
+                f"{API_BASE_URL}{path}", headers=_headers(), timeout=10
+            )
     except requests.exceptions.RequestException:
         return None, None
     try:
@@ -215,20 +338,3 @@ def get_quiet(path: str):
     except Exception:
         body = None
     return resp.status_code, body
-
-
-def _handle(resp: requests.Response):
-    if resp.status_code == 401:
-        st.warning("Your session has expired. Please log in again.")
-        logout()
-        st.rerun()
-    if resp.status_code >= 400:
-        try:
-            detail = resp.json().get("detail", resp.text)
-        except Exception:
-            detail = resp.text
-        st.error(f"Error: {detail}")
-        return None
-    if resp.status_code == 204:
-        return True
-    return resp.json()

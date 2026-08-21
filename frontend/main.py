@@ -2,6 +2,9 @@
 Streamlit frontend — Shri Parvati Motors
 """
 import base64, os, threading, time
+
+# ── Demo mode flag — set SHOW_DEMO_CREDENTIALS=true ONLY on the Render demo ──
+SHOW_DEMO_CREDENTIALS = os.getenv("SHOW_DEMO_CREDENTIALS", "false").lower() in ("true", "1", "yes")
 import requests
 import streamlit as st
 import api_client as api
@@ -160,9 +163,14 @@ def render_login():
             </p>
         """, unsafe_allow_html=True)
 
+        # Pre-fill credentials if a demo quick-fill button was clicked
+        default_user = st.session_state.pop("_demo_user", "")
+        default_pass = st.session_state.pop("_demo_pass", "")
+
         with st.form("login_form"):
-            username = st.text_input("Username", placeholder="Enter your username")
-            password = st.text_input("Password", type="password",
+            username = st.text_input("Username", value=default_user,
+                                     placeholder="Enter your username")
+            password = st.text_input("Password", value=default_pass, type="password",
                                      placeholder="Enter your password")
             submitted = st.form_submit_button("Sign In", use_container_width=True,
                                               type="primary")
@@ -170,6 +178,64 @@ def render_login():
             if not username or not password:
                 st.warning("Please enter both username and password.")
             elif api.login(username, password):
+                st.rerun()
+
+        # ── Demo credentials panel — only shown when SHOW_DEMO_CREDENTIALS=true ──
+        if SHOW_DEMO_CREDENTIALS:
+            st.markdown("""
+                <div style="
+                    background: rgba(59, 130, 246, 0.07);
+                    border: 1px solid rgba(59, 130, 246, 0.25);
+                    border-radius: 10px;
+                    padding: 14px 16px;
+                    margin-top: 14px;
+                ">
+                    <div style="font-weight:600;color:#60A5FA;font-size:12px;
+                                margin-bottom:8px;letter-spacing:0.03em;">
+                        💡 DEMO LOGIN CREDENTIALS
+                    </div>
+                    <table style="width:100%;border-collapse:collapse;font-size:11px;">
+                        <thead>
+                            <tr style="color:#64748B;">
+                                <td style="padding:2px 6px;">Role</td>
+                                <td style="padding:2px 6px;">Username</td>
+                                <td style="padding:2px 6px;">Password</td>
+                            </tr>
+                        </thead>
+                        <tbody style="color:#CBD5E1;">
+                            <tr>
+                                <td style="padding:3px 6px;color:#FBBF24;font-weight:600;">👑 Admin</td>
+                                <td style="padding:3px 6px;"><code style="background:#1E293B;padding:1px 4px;border-radius:3px;">demo_admin</code></td>
+                                <td style="padding:3px 6px;"><code style="background:#1E293B;padding:1px 4px;border-radius:3px;">Demo@Admin1</code></td>
+                            </tr>
+                            <tr>
+                                <td style="padding:3px 6px;color:#34D399;font-weight:600;">📋 Desk</td>
+                                <td style="padding:3px 6px;"><code style="background:#1E293B;padding:1px 4px;border-radius:3px;">demo_desk1</code></td>
+                                <td style="padding:3px 6px;"><code style="background:#1E293B;padding:1px 4px;border-radius:3px;">Demo@Desk1</code></td>
+                            </tr>
+                            <tr>
+                                <td style="padding:3px 6px;color:#A78BFA;font-weight:600;">🔧 Mechanic</td>
+                                <td style="padding:3px 6px;"><code style="background:#1E293B;padding:1px 4px;border-radius:3px;">demo_mech1</code></td>
+                                <td style="padding:3px 6px;"><code style="background:#1E293B;padding:1px 4px;border-radius:3px;">Demo@Mech1</code></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            """, unsafe_allow_html=True)
+
+            st.caption("Quick fill & sign in:")
+            c1, c2, c3 = st.columns(3)
+            if c1.button("👑 Admin", use_container_width=True, key="demo_fill_admin"):
+                st.session_state["_demo_user"] = "demo_admin"
+                st.session_state["_demo_pass"] = "Demo@Admin1"
+                st.rerun()
+            if c2.button("📋 Desk", use_container_width=True, key="demo_fill_desk"):
+                st.session_state["_demo_user"] = "demo_desk1"
+                st.session_state["_demo_pass"] = "Demo@Desk1"
+                st.rerun()
+            if c3.button("🔧 Mechanic", use_container_width=True, key="demo_fill_mech"):
+                st.session_state["_demo_user"] = "demo_mech1"
+                st.session_state["_demo_pass"] = "Demo@Mech1"
                 st.rerun()
 
 

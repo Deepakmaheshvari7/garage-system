@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
+API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000").rstrip("/")
 
 # Default time-to-live (seconds) for cached GETs.
 _CACHE_TTL = 30
@@ -38,13 +38,16 @@ def init_session() -> bool:
                 timeout=10,
             )
             if resp.status_code == 200:
-                data = resp.json()
-                st.session_state["access_token"] = data["access_token"]
-                st.session_state["refresh_token"] = data.get("refresh_token") or refresh_token
-                st.session_state["role"] = data["role"]
-                st.session_state["username"] = data["username"]
-                st.session_state["user_id"] = data["user_id"]
-                return True
+                try:
+                    data = resp.json()
+                    st.session_state["access_token"] = data["access_token"]
+                    st.session_state["refresh_token"] = data.get("refresh_token") or refresh_token
+                    st.session_state["role"] = data["role"]
+                    st.session_state["username"] = data["username"]
+                    st.session_state["user_id"] = data["user_id"]
+                    return True
+                except Exception:
+                    pass
             else:
                 # Token expired or invalid, clear query params
                 st.query_params.clear()
@@ -80,15 +83,18 @@ def refresh_access_token() -> bool:
             timeout=10,
         )
         if resp.status_code == 200:
-            data = resp.json()
-            st.session_state["access_token"] = data["access_token"]
-            st.session_state["role"] = data["role"]
-            st.session_state["username"] = data["username"]
-            st.session_state["user_id"] = data["user_id"]
-            if data.get("refresh_token"):
-                st.session_state["refresh_token"] = data["refresh_token"]
-                st.query_params["auth"] = data["refresh_token"]
-            return True
+            try:
+                data = resp.json()
+                st.session_state["access_token"] = data["access_token"]
+                st.session_state["role"] = data["role"]
+                st.session_state["username"] = data["username"]
+                st.session_state["user_id"] = data["user_id"]
+                if data.get("refresh_token"):
+                    st.session_state["refresh_token"] = data["refresh_token"]
+                    st.query_params["auth"] = data["refresh_token"]
+                return True
+            except Exception:
+                pass
     except requests.exceptions.RequestException:
         pass
     return False
@@ -99,26 +105,40 @@ def login(username: str, password: str) -> bool:
         resp = requests.post(
             f"{API_BASE_URL}/api/auth/login",
             data={"username": username, "password": password},
-            timeout=10,
+            timeout=15,
         )
     except requests.exceptions.RequestException as exc:
-        st.error(f"Could not reach the server: {exc}")
+        st.error(f"Could not reach backend server at `{API_BASE_URL}`: {exc}")
         return False
 
     if resp.status_code == 200:
-        data = resp.json()
-        st.session_state["access_token"] = data["access_token"]
-        st.session_state["refresh_token"] = data.get("refresh_token")
-        st.session_state["role"] = data["role"]
-        st.session_state["username"] = data["username"]
-        st.session_state["user_id"] = data["user_id"]
+        try:
+            data = resp.json()
+            st.session_state["access_token"] = data["access_token"]
+            st.session_state["refresh_token"] = data.get("refresh_token")
+            st.session_state["role"] = data["role"]
+            st.session_state["username"] = data["username"]
+            st.session_state["user_id"] = data["user_id"]
 
-        # Persist session refresh token in query params for seamless reload
-        if data.get("refresh_token"):
-            st.query_params["auth"] = data["refresh_token"]
-        return True
+            # Persist session refresh token in query params for seamless reload
+            if data.get("refresh_token"):
+                st.query_params["auth"] = data["refresh_token"]
+            return True
+        except Exception:
+            st.error("Received an invalid non-JSON response from the server.")
+            return False
 
-    st.error(resp.json().get("detail", "Login failed"))
+    # Safely extract error details if response is not JSON (e.g. Render HTML 502/503/404)
+    try:
+        detail = resp.json().get("detail", "Login failed")
+    except Exception:
+        if resp.status_code in (502, 503, 504):
+            detail = f"Backend server is waking up or temporarily unavailable (HTTP {resp.status_code}). Please retry in a few moments."
+        elif resp.status_code == 404:
+            detail = f"Login endpoint not found (HTTP 404). Please verify API_BASE_URL (currently: `{API_BASE_URL}`)."
+        else:
+            detail = f"Server returned error HTTP {resp.status_code}."
+    st.error(detail)
     return False
 
 
@@ -155,12 +175,15 @@ def _handle(resp: requests.Response, retry_fn: Optional[Callable[[], requests.Re
         try:
             detail = resp.json().get("detail", resp.text)
         except Exception:
-            detail = resp.text
+            detail = resp.text or f"HTTP {resp.status_code}"
         st.error(f"Error: {detail}")
         return None
     if resp.status_code == 204:
         return True
-    return resp.json()
+    try:
+        return resp.json()
+    except Exception:
+        return resp.text
 
 
 def get(path: str, params: dict | None = None):
